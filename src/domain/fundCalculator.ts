@@ -280,9 +280,13 @@ export function computeFundSummaryWithHistory({
   }
 
   // Check monthly configs for this fund
-  for (const [, cfg] of monthlyConfigs) {
-    if (cfg.fundId === fund.id && cfg.yearMonth <= targetYearMonth) {
-      candidateMonths.add(cfg.yearMonth);
+  for (const [key, cfg] of monthlyConfigs) {
+    const isMatchingFund = cfg.fundId
+      ? cfg.fundId === fund.id
+      : key.startsWith(fund.id) || !key.includes('_');
+    const ym = cfg.yearMonth || (key.includes('_') ? key.split('_')[1] : key);
+    if (isMatchingFund && /^\d{4}-(0[1-9]|1[0-2])$/.test(ym) && ym <= targetYearMonth) {
+      candidateMonths.add(ym);
     }
   }
 

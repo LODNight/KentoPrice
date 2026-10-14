@@ -186,5 +186,191 @@ describe('Backup JSON v2 Service', () => {
         )
       ).rejects.toThrow('IndexedDB read error');
     });
+
+    it('should strictly perform read-only operations and never invoke mutating methods', async () => {
+      const mockTxRepo = {
+        getAll: vi.fn().mockResolvedValue([]),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn(),
+      };
+      const mockCatRepo = {
+        getAll: vi.fn().mockResolvedValue([]),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn(),
+        archive: vi.fn(),
+        restore: vi.fn(),
+      };
+      const mockFundRepo = {
+        getAll: vi.fn().mockResolvedValue([]),
+        getAllMonthlyConfigs: vi.fn().mockResolvedValue([]),
+        create: vi.fn(),
+        update: vi.fn(),
+        setMonthlyConfig: vi.fn(),
+        archive: vi.fn(),
+        restore: vi.fn(),
+      };
+
+      await generateBackupData(
+        mockTxRepo as unknown as ITransactionRepository,
+        mockCatRepo as unknown as ICategoryRepository,
+        mockFundRepo as unknown as IFundRepository
+      );
+
+      // Verify no mutating methods were called
+      expect(mockTxRepo.create).not.toHaveBeenCalled();
+      expect(mockTxRepo.update).not.toHaveBeenCalled();
+      expect(mockTxRepo.delete).not.toHaveBeenCalled();
+      expect(mockCatRepo.create).not.toHaveBeenCalled();
+      expect(mockCatRepo.update).not.toHaveBeenCalled();
+      expect(mockCatRepo.delete).not.toHaveBeenCalled();
+      expect(mockFundRepo.create).not.toHaveBeenCalled();
+      expect(mockFundRepo.update).not.toHaveBeenCalled();
+      expect(mockFundRepo.setMonthlyConfig).not.toHaveBeenCalled();
+      expect(mockFundRepo.archive).not.toHaveBeenCalled();
+    });
+
+    it('should produce a JSON-serializable backup conforming exactly to DATA_CONTRACT v2 specification', async () => {
+      const fixedNow = new Date('2026-10-12T08:00:00.000Z');
+      const mockTxRepo: Partial<ITransactionRepository> = {
+        getAll: vi.fn().mockResolvedValue([
+          {
+            id: 'txn_test_1',
+            type: 'expense',
+            amount: 50000,
+            categoryId: 'cat_coffee',
+            fundId: 'fund_life_01',
+            transactionDate: '2026-10-12',
+            note: 'Cà phê sáng',
+            createdAt: '2026-10-12T01:00:00.000Z',
+            updatedAt: '2026-10-12T01:00:00.000Z',
+          },
+        ]),
+      };
+      const mockCatRepo: Partial<ICategoryRepository> = {
+        getAll: vi.fn().mockResolvedValue([
+          {
+            id: 'cat_coffee',
+            name: 'Cà phê',
+            type: 'expense',
+            icon: 'coffee',
+            color: '#F59E0B',
+            isDefault: false,
+            isArchived: false,
+            order: 1,
+            createdAt: '2026-10-01T00:00:00.000Z',
+          },
+        ]),
+      };
+      const mockFundRepo: Partial<IFundRepository> = {
+        getAll: vi.fn().mockResolvedValue([
+          {
+            id: 'fund_life_01',
+            name: 'Quỹ Sinh Hoạt',
+            icon: 'wallet',
+            color: '#3B82F6',
+            isArchived: false,
+            order: 0,
+            defaultBudget: 5000000,
+            defaultMode: 'rollover',
+            createdAt: '2026-10-01T00:00:00.000Z',
+            updatedAt: '2026-10-01T00:00:00.000Z',
+          },
+        ]),
+        getAllMonthlyConfigs: vi.fn().mockResolvedValue([
+          {
+            id: 'fund_life_01_2026-10',
+            fundId: 'fund_life_01',
+            yearMonth: '2026-10',
+            monthlyBudget: 5000000,
+            budgetMode: 'rollover',
+            updatedAt: '2026-10-01T00:00:00.000Z',
+          },
+        ]),
+      };
+
+      const backup = await generateBackupData(
+        mockTxRepo as ITransactionRepository,
+        mockCatRepo as ICategoryRepository,
+        mockFundRepo as IFundRepository,
+        fixedNow
+      );
+
+      const jsonString = JSON.stringify(backup, null, 2);
+      const parsed = JSON.parse(jsonString);
+
+      expect(parsed.$schema).toBe('https://qlthuchi.local/schemas/v2/backup.json');
+      expect(parsed.app).toBe('QL_ThuChi');
+      expect(parsed.version).toBe(2);
+      expect(parsed.exportedAt).toBe('2026-10-12T08:00:00.000Z');
+      expect(parsed.data.transactions[0].id).toBe('txn_test_1');
+      expect(parsed.data.transactions[0].categoryId).toBe('cat_coffee');
+      expect(parsed.data.transactions[0].fundId).toBe('fund_life_01');
+      expect(parsed.data.categories[0].id).toBe('cat_coffee');
+      expect(parsed.data.funds[0].id).toBe('fund_life_01');
+      expect(parsed.data.fundMonthlyConfigs[0].id).toBe('fund_life_01_2026-10');
+    });
+  });
+
+  describe('exportAndDownloadBackup & Browser Download Handling', () => {
+    it('should reject and propagate error if any repository fails during backup preparation', async () => {
+      const mockTxRepo: Partial<ITransactionRepository> = {
+        getAll: vi.fn().mockResolvedValue([]),
+      };
+      const mockCatRepo: Partial<ICategoryRepository> = {
+        getAll: vi.fn().mockResolvedValue([]),
+      };
+      const mockFundRepo: Partial<IFundRepository> = {
+        getAll: vi.fn().mockResolvedValue([]),
+        getAllMonthlyConfigs: vi.fn().mockRejectedValue(new Error('IndexedDB config store corrupted')),
+      };
+
+      const { exportAndDownloadBackup } = await import('./backup');
+
+      await expect(
+        exportAndDownloadBackup(
+          mockTxRepo as ITransactionRepository,
+          mockCatRepo as ICategoryRepository,
+          mockFundRepo as IFundRepository
+        )
+      ).rejects.toThrow('IndexedDB config store corrupted');
+    });
+
+    it('should successfully return filename and schema v2 payload when repositories succeed', async () => {
+      const mockTxRepo: Partial<ITransactionRepository> = {
+        getAll: vi.fn().mockResolvedValue([]),
+      };
+      const mockCatRepo: Partial<ICategoryRepository> = {
+        getAll: vi.fn().mockResolvedValue([]),
+      };
+      const mockFundRepo: Partial<IFundRepository> = {
+        getAll: vi.fn().mockResolvedValue([]),
+        getAllMonthlyConfigs: vi.fn().mockResolvedValue([]),
+      };
+
+      const { exportAndDownloadBackup } = await import('./backup');
+
+      const result = await exportAndDownloadBackup(
+        mockTxRepo as ITransactionRepository,
+        mockCatRepo as ICategoryRepository,
+        mockFundRepo as IFundRepository
+      );
+
+      expect(result.filename).toMatch(/^backup_qlthuchi_\d{8}\.json$/);
+      expect(result.payload.version).toBe(2);
+      expect(result.payload.app).toBe('QL_ThuChi');
+      expect(result.payload.data).toBeDefined();
+    });
+
+    it('should safely no-op downloadJsonFile in non-browser Node environments', async () => {
+      const { downloadJsonFile } = await import('./backup');
+
+      // In Node environment, window and document are undefined. Must not throw!
+      expect(() => {
+        downloadJsonFile('test.json', '{"test": true}');
+      }).not.toThrow();
+    });
   });
 });
+

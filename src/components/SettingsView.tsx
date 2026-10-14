@@ -562,6 +562,41 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </p>
       </div>
 
+      {backupMessage && (
+        <div
+          style={{
+            padding: '12px 16px',
+            borderRadius: 'var(--radius-md)',
+            marginBottom: '20px',
+            fontSize: '0.875rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            backgroundColor:
+              backupMessage.type === 'success'
+                ? 'rgba(16, 185, 129, 0.12)'
+                : 'rgba(239, 68, 68, 0.12)',
+            color:
+              backupMessage.type === 'success'
+                ? 'var(--color-income)'
+                : 'var(--color-expense)',
+            border: `1px solid ${
+              backupMessage.type === 'success'
+                ? 'rgba(16, 185, 129, 0.3)'
+                : 'rgba(239, 68, 68, 0.3)'
+            }`,
+            boxShadow: 'var(--shadow-sm)',
+          }}
+        >
+          {backupMessage.type === 'success' ? (
+            <CheckCircle2 size={18} style={{ flexShrink: 0 }} />
+          ) : (
+            <Info size={18} style={{ flexShrink: 0 }} />
+          )}
+          <span style={{ fontWeight: 500 }}>{backupMessage.text}</span>
+        </div>
+      )}
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
         {/* GROUP 1: Giao diện & Hiển thị */}
         <div>
@@ -847,6 +882,68 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   An toàn
                 </span>
                 <ChevronRight size={18} color="var(--color-text-muted)" />
+              </div>
+            </div>
+
+            {/* Item 3.2: Direct Backup Export (JSON v2) */}
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={handleExportBackup}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '14px 16px',
+                cursor: isExporting ? 'not-allowed' : 'pointer',
+                transition: 'background-color var(--transition-fast)',
+                borderTop: '1px solid var(--color-border-subtle)',
+                opacity: isExporting ? 0.7 : 1,
+              }}
+              onMouseEnter={(e) => {
+                if (!isExporting) e.currentTarget.style.backgroundColor = 'var(--color-surface-elevated)';
+              }}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <div
+                  style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: 'var(--radius-md)',
+                    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--color-income)',
+                    flexShrink: 0,
+                  }}
+                >
+                  {isExporting ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                    Sao lưu dữ liệu (JSON v2)
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
+                    Xuất file JSON an toàn: backup_qlthuchi_YYYYMMDD.json
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span
+                  className="badge"
+                  style={{
+                    backgroundColor: 'var(--color-surface-elevated)',
+                    color: 'var(--color-brand-primary)',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  {isExporting ? 'Đang xuất...' : 'Xuất ngay'}
+                </span>
+                <Download size={16} color="var(--color-text-muted)" />
               </div>
             </div>
           </div>

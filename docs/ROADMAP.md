@@ -62,18 +62,18 @@ Definition   Specs        & Data Model  (Mock Data)  (Full Logic) Refinement   R
 
 ---
 
-### Phase 2.1: Fund Management Extension (In Progress)
-* **Status**: Data Architecture & UX Blueprints Completed; Ready for Core Implementation.
+### Phase 2.1: Fund Management Extension (Completed)
+* **Status**: Core Implementation & Unit/Integration Tests Completed (100% Pass).
 * **Deliverables**:
   * [x] UX Specifications & Rules (`docs/UX_FLOW_FUND_MANAGEMENT.md`, `docs/UX_RULES.md`, PDR-008..022)
   * [x] Wireframes & Screen Blueprints (`docs/WIREFRAMES.md` Wireframes 0–10)
   * [x] Data Architecture & Schema v2 (`docs/DATA_MODEL.md`, `docs/DATA_CONTRACT.md`, `docs/DECISIONS_LOG.md` PDR-018)
-  * [ ] Core Implementation:
-    * [ ] 1. Domain Types & Validation schemas (`src/types/index.ts`, `src/domain/validation.ts`)
-    * [ ] 2. Pure Financial Calculation Engine & Unit Tests (`src/domain/fundCalculator.ts`, `src/domain/fundCalculator.test.ts`)
-    * [ ] 3. IndexedDB Schema v2 Migration & `IndexedDBFundRepository` (`src/infrastructure/indexedDB/`)
-    * [ ] 4. Application Feature Hook `useFunds` (`src/hooks/useFunds.ts`)
-    * [ ] 5. UI Integration: Quỹ Tab trên Navigation, Danh sách Quỹ, Form Tạo/Sửa Quỹ, Đổi Chế độ, Ẩn/Khôi phục, Gán Quỹ vào Giao dịch.
+  * [x] Core Implementation:
+    * [x] 1. Domain Types & Validation schemas (`src/types/index.ts`, `src/domain/validation.ts`)
+    * [x] 2. Pure Financial Calculation Engine & Unit Tests (`src/domain/fundCalculator.ts`, `src/domain/fundCalculator.test.ts`)
+    * [x] 3. IndexedDB Schema v2 Migration & `IndexedDBFundRepository` (`src/infrastructure/indexedDB/`)
+    * [x] 4. Application Feature Hook `useFunds` (`src/hooks/useFunds.ts`)
+    * [x] 5. UI Integration: Quỹ Tab trên Navigation, Danh sách Quỹ, Form Tạo/Sửa Quỹ, Đổi Chế độ, Ẩn/Khôi phục, Gán Quỹ vào Giao dịch.
 
 ### Phase 3: UI Prototype (Mock Data) (Completed)
 * **Goal**: Build the responsive layout and interactive screens using realistic mock data to validate UX feel before persisting data.

@@ -877,5 +877,103 @@ describe('fundCalculator pure domain engine', () => {
       expect(summary.openingBalance).toBe(0);
       expect(summary.currentBalance).toBe(5000000); // 0 + 5tr - 0
     });
+
+    describe('Quỹ khởi tạo trong quá khứ nhưng không có giao dịch các tháng đầu (Dormant initial months)', () => {
+      it('khi defaultMode = rollover: tích lũy ngân sách qua các tháng 07, 08, 09 và tính vào tháng 10 theo mã nguồn hiện tại', () => {
+        const fundCreatedJul: Fund = {
+          id: 'fund_dormant_01',
+          name: 'Quỹ Tạo Tháng 07',
+          icon: 'wallet',
+          color: '#3B82F6',
+          isArchived: false,
+          order: 0,
+          defaultBudget: 5000000,
+          defaultMode: 'rollover',
+          createdAt: '2026-07-15T08:00:00.000Z',
+          updatedAt: '2026-07-15T08:00:00.000Z',
+        };
+
+        const txns: Transaction[] = [
+          {
+            id: 'txn_oct_01',
+            type: 'expense',
+            amount: 1000000,
+            categoryId: 'cat_groceries',
+            fundId: 'fund_dormant_01',
+            transactionDate: '2026-10-10',
+            createdAt: '',
+            updatedAt: '',
+          },
+        ];
+
+        const emptyMonthlyConfigs = new Map<string, FundMonthlyConfig>();
+
+        // Tính toán chuỗi lịch sử cho tháng 10/2026
+        const summaryOct = computeFundSummaryWithHistory({
+          fund: fundCreatedJul,
+          targetYearMonth: '2026-10',
+          monthlyConfigs: emptyMonthlyConfigs,
+          transactions: txns,
+        });
+
+        // Giải thích kết quả thực tế theo mã nguồn hiện tại:
+        // 1. candidateMonths gom: createdAt (2026-07) và targetYearMonth (2026-10)
+        // 2. sortedMonths = ['2026-07', '2026-08', '2026-09', '2026-10']
+        // 3. Tháng 07: opening = 0, budget = 5tr, spent = 0 -> closing = 5tr
+        //    Tháng 08: opening = 5tr, budget = 5tr, spent = 0 -> closing = 10tr
+        //    Tháng 09: opening = 10tr, budget = 5tr, spent = 0 -> closing = 15tr
+        //    Tháng 10: opening = 15tr, budget = 5tr, spent = 1tr -> currentBalance = 19tr
+        expect(summaryOct.openingBalance).toBe(15000000);
+        expect(summaryOct.monthlyBudget).toBe(5000000);
+        expect(summaryOct.monthlySpending).toBe(1000000);
+        expect(summaryOct.currentBalance).toBe(19000000);
+        expect(summaryOct.isOverBudget).toBe(false);
+      });
+
+      it('khi defaultMode = reset: số dư đầu kỳ tháng 10 là 0 ₫ bất kể ngân sách các tháng trước', () => {
+        const fundCreatedJulReset: Fund = {
+          id: 'fund_dormant_reset',
+          name: 'Quỹ Reset Tạo Tháng 07',
+          icon: 'wallet',
+          color: '#10B981',
+          isArchived: false,
+          order: 0,
+          defaultBudget: 5000000,
+          defaultMode: 'reset',
+          createdAt: '2026-07-15T08:00:00.000Z',
+          updatedAt: '2026-07-15T08:00:00.000Z',
+        };
+
+        const txns: Transaction[] = [
+          {
+            id: 'txn_oct_02',
+            type: 'expense',
+            amount: 1000000,
+            categoryId: 'cat_groceries',
+            fundId: 'fund_dormant_reset',
+            transactionDate: '2026-10-10',
+            createdAt: '',
+            updatedAt: '',
+          },
+        ];
+
+        const emptyMonthlyConfigs = new Map<string, FundMonthlyConfig>();
+
+        const summaryOct = computeFundSummaryWithHistory({
+          fund: fundCreatedJulReset,
+          targetYearMonth: '2026-10',
+          monthlyConfigs: emptyMonthlyConfigs,
+          transactions: txns,
+        });
+
+        // Reset mode: mỗi tháng mở đầu đều = 0 ₫
+        // Tháng 10: opening = 0, budget = 5tr, spent = 1tr -> currentBalance = 4tr
+        expect(summaryOct.openingBalance).toBe(0);
+        expect(summaryOct.monthlyBudget).toBe(5000000);
+        expect(summaryOct.monthlySpending).toBe(1000000);
+        expect(summaryOct.currentBalance).toBe(4000000);
+        expect(summaryOct.isOverBudget).toBe(false);
+      });
+    });
   });
 });

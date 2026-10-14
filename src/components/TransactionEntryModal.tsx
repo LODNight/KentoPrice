@@ -22,7 +22,7 @@ interface TransactionEntryModalProps {
     transactionDate: string;
     note?: string;
     fundId?: string | null;
-  }) => Promise<void> | void;
+  }) => Promise<void>;
   onCreateCategory?: (data: {
     name: string;
     type: TransactionType;

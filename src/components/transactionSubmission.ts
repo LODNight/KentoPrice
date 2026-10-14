@@ -17,7 +17,7 @@ export interface SubmitTransactionParams {
     transactionDate: string;
     note?: string;
     fundId?: string | null;
-  }) => Promise<void> | void;
+  }) => Promise<void>;
   onClose: () => void;
 }
 

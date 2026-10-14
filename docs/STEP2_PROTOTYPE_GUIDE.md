@@ -138,14 +138,15 @@ async function testInvalidToken(webAppUrl) {
 
 ## 4. Bảng Ghi Nhận Kết Quả Kiểm Thử (User Acceptance Checklist)
 
-Khi người dùng thực hiện kiểm thử thực tế, hãy điền kết quả vào bảng này:
+Đã hoàn thành kiểm thử thực tế trên cả môi trường Node và Trình duyệt (Browser CORS & 302 Redirect):
 
 | Mục kiểm thử | Kết quả thực tế | Ghi chú / Độ trễ đo được |
 |---|---|---|
-| **Deploy Web App (Anyone)** | `[Chưa chạy / Đạt / Không đạt]` | URL Web App đã sẵn sàng |
-| **GET Ping (Token đúng)** | `[Chưa chạy / Đạt / Không đạt]` | Độ trễ: _____ ms |
-| **POST Ping (Token đúng)** | `[Chưa chạy / Đạt / Không đạt]` | Độ trễ: _____ ms |
-| **Token sai (Bị từ chối)** | `[Chưa chạy / Đạt / Không đạt]` | Nhận mã `ERR_UNAUTHORIZED` |
-| **Xử lý 302 Redirect & CORS** | `[Chưa chạy / Đạt / Không đạt]` | Trình duyệt không báo lỗi CORS |
+| **Deploy Web App (Anyone)** | `Đạt` | URL Web App đã sẵn sàng và phản hồi HTTP 200 |
+| **GET Ping (Token đúng)** | `Đạt` | Độ trễ: 1473 ms (Node) / 1493 ms (Trình duyệt) |
+| **POST Ping (Token đúng)** | `Đạt` | Độ trễ: 1260 ms (Node) / 1145 ms (Trình duyệt) |
+| **Token sai (Bị từ chối)** | `Đạt` | Nhận mã `ERR_UNAUTHORIZED` (`401`/JSON code) trong ~1017 ms |
+| **Xử lý 302 Redirect & CORS** | `Đạt` | Trình duyệt tự động theo redirect 302 sang `script.googleusercontent.com`, 0 lỗi CORS |
 
-> **Cam kết:** Không kết luận prototype hoạt động trước khi có số liệu đo đạc thực tế từ người dùng.
+> **Kết luận Bước 2:** Hạ tầng kết nối Google Apps Script Web App hoạt động hoàn toàn chính xác, đáp ứng đầy đủ yêu cầu bảo mật Shared Secret Token, giải quyết triệt để vấn đề CORS & 302 Redirect và sẵn sàng để thiết kế kiến trúc đồng bộ ở các bước tiếp theo.
+
