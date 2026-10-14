@@ -1,6 +1,8 @@
 import type { Transaction, Category, Fund, FundMonthlyConfig } from '../types';
 import type { ITransactionRepository, ICategoryRepository, IFundRepository } from '../types/repository';
 import { transactionRepository, categoryRepository, fundRepository } from './index';
+import { openDatabase, STORES } from '../infrastructure/indexedDB/db';
+import { DEFAULT_CATEGORIES } from '../infrastructure/indexedDB/initialCategories';
 
 export interface BackupV2Payload {
   $schema: string;
@@ -109,3 +111,75 @@ export async function exportAndDownloadBackup(
   downloadJsonFile(filename, jsonString);
   return { filename, payload };
 }
+
+/**
+ * Restores a snapshot payload into IndexedDB.
+ * Safely replaces local transactions, categories, funds, and fundMonthlyConfigs.
+ */
+export async function restoreSnapshotToDatabase(
+  data: BackupV2Payload['data']
+): Promise<{ counts: { transactions: number; categories: number; funds: number; fundMonthlyConfigs: number } }> {
+  if (!data) {
+    throw new Error('Dữ liệu khôi phục không hợp lệ.');
+  }
+
+  const db = await openDatabase();
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(
+      [STORES.TRANSACTIONS, STORES.CATEGORIES, STORES.FUNDS, STORES.FUND_MONTHLY_CONFIGS, STORES.METADATA],
+      'readwrite'
+    );
+
+    const txnStore = tx.objectStore(STORES.TRANSACTIONS);
+    const catStore = tx.objectStore(STORES.CATEGORIES);
+    const fundStore = tx.objectStore(STORES.FUNDS);
+    const configStore = tx.objectStore(STORES.FUND_MONTHLY_CONFIGS);
+    const metaStore = tx.objectStore(STORES.METADATA);
+
+    // Clear existing stores for authoritative snapshot synchronization
+    txnStore.clear();
+    catStore.clear();
+    fundStore.clear();
+    configStore.clear();
+
+    // 1. Categories
+    if (Array.isArray(data.categories) && data.categories.length > 0) {
+      data.categories.forEach((cat) => catStore.put(cat));
+    } else {
+      DEFAULT_CATEGORIES.forEach((cat) => catStore.put(cat));
+    }
+
+    // 2. Funds
+    if (Array.isArray(data.funds)) {
+      data.funds.forEach((fund) => fundStore.put(fund));
+    }
+
+    // 3. FundMonthlyConfigs
+    if (Array.isArray(data.fundMonthlyConfigs)) {
+      data.fundMonthlyConfigs.forEach((cfg) => configStore.put(cfg));
+    }
+
+    // 4. Transactions
+    if (Array.isArray(data.transactions)) {
+      data.transactions.forEach((txn) => txnStore.put(txn));
+    }
+
+    metaStore.put({ key: 'lastRestoredAt', value: new Date().toISOString() });
+
+    tx.oncomplete = () => {
+      resolve({
+        counts: {
+          transactions: data.transactions?.length || 0,
+          categories: data.categories?.length || 0,
+          funds: data.funds?.length || 0,
+          fundMonthlyConfigs: data.fundMonthlyConfigs?.length || 0,
+        },
+      });
+    };
+
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(new Error('Khôi phục cơ sở dữ liệu thất bại (Transaction Aborted).'));
+  });
+}
+

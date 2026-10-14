@@ -21,6 +21,7 @@ import {
   Cloud,
   FileSpreadsheet,
   UploadCloud,
+  DownloadCloud,
   KeyRound,
   ChevronDown,
   SlidersHorizontal,
@@ -73,7 +74,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     return cfg.token || 'kentoprice123123';
   });
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
-  const [syncActionType, setSyncActionType] = useState<'ping' | 'init' | 'push' | 'meta' | null>(null);
+  const [syncActionType, setSyncActionType] = useState<'ping' | 'init' | 'push' | 'pull' | 'meta' | null>(null);
   const [syncMessage, setSyncMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [metaInfo, setMetaInfo] = useState<{ counts?: Record<string, number>; lastSyncedAt?: string | null } | null>(null);
   const [showConfig, setShowConfig] = useState<boolean>(false);
@@ -206,6 +207,36 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Lấy thông tin thất bại';
+      setSyncMessage({ type: 'error', text: msg });
+    } finally {
+      setIsSyncing(false);
+      setSyncActionType(null);
+    }
+  };
+
+  const handlePullSnapshot = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    setSyncActionType('pull');
+    setSyncMessage(null);
+    try {
+      saveSyncConfig({ webAppUrl: syncUrl, token: syncToken });
+      const res = await autoSyncManager.executePull({ force: true });
+      if (res.updated) {
+        setSyncMessage({
+          type: 'success',
+          text: `Đã kéo thành công: ${res.counts?.transactions || 0} giao dịch, ${res.counts?.categories || 0} danh mục, ${res.counts?.funds || 0} quỹ từ Google Sheets về máy!`,
+        });
+      } else if (res.error) {
+        setSyncMessage({ type: 'error', text: res.error });
+      } else {
+        setSyncMessage({
+          type: 'info',
+          text: 'Dữ liệu trên máy đã đồng nhất với Google Sheets.',
+        });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Kéo dữ liệu thất bại';
       setSyncMessage({ type: 'error', text: msg });
     } finally {
       setIsSyncing(false);
@@ -940,7 +971,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </button>
             </div>
 
-            {/* Action 4: Xem thông tin bảng tính */}
+            {/* Action 4: Kéo dữ liệu từ Cloud về máy (Pull Snapshot) */}
             <div
               style={{
                 display: 'flex',
@@ -953,7 +984,41 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               }}
             >
               <div>
-                <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>4. Kiểm tra số lượng bản ghi trên Cloud</div>
+                <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>4. Tải dữ liệu từ Google Sheets về máy (Pull)</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
+                  Đồng bộ toàn bộ giao dịch, quỹ và danh mục từ Cloud về thiết bị này
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handlePullSnapshot}
+                disabled={isSyncing}
+                style={{ fontSize: '0.8125rem', padding: '6px 14px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                {isSyncing && syncActionType === 'pull' ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <DownloadCloud size={14} />
+                )}
+                Tải về
+              </button>
+            </div>
+
+            {/* Action 5: Xem thông tin bảng tính */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '12px 14px',
+                borderRadius: 'var(--radius-md)',
+                backgroundColor: 'var(--color-surface-elevated)',
+                border: '1px solid var(--color-border-subtle)',
+              }}
+            >
+              <div>
+                <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>5. Kiểm tra số lượng bản ghi trên Cloud</div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
                   {metaInfo?.counts
                     ? `${metaInfo.counts.transactions} giao dịch • ${metaInfo.counts.categories} danh mục • ${metaInfo.counts.funds} quỹ`

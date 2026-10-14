@@ -9,11 +9,17 @@ import {
 export interface UseAutoSyncReturn {
   syncStatus: AutoSyncStatus;
   lastSyncedAt: Date | null;
+  lastPulledAt: Date | null;
   lastError: string | null;
   isAutoSyncEnabled: boolean;
   setAutoSyncEnabled: (enabled: boolean) => void;
   triggerAutoSync: () => void;
   syncNow: () => Promise<boolean>;
+  pullFromCloud: (options?: { force?: boolean }) => Promise<{
+    updated: boolean;
+    counts?: Record<string, number>;
+    error?: string;
+  }>;
 }
 
 export function useAutoSync(managerOrDebounce?: AutoSyncManager | number): UseAutoSyncReturn {
@@ -22,7 +28,6 @@ export function useAutoSync(managerOrDebounce?: AutoSyncManager | number): UseAu
       ? autoSyncManager
       : managerOrDebounce;
   const [state, setState] = useState<AutoSyncState>(() => manager.getState());
-
 
   useEffect(() => {
     const unsubscribe = manager.subscribe((newState) => {
@@ -46,14 +51,23 @@ export function useAutoSync(managerOrDebounce?: AutoSyncManager | number): UseAu
     return manager.syncNow();
   }, [manager]);
 
+  const pullFromCloud = useCallback(
+    (options?: { force?: boolean }) => {
+      return manager.executePull(options);
+    },
+    [manager]
+  );
+
   return {
     syncStatus: state.status,
     lastSyncedAt: state.lastSyncedAt,
+    lastPulledAt: state.lastPulledAt,
     lastError: state.lastError,
     isAutoSyncEnabled: state.isAutoSyncEnabled,
     setAutoSyncEnabled,
     triggerAutoSync,
     syncNow,
+    pullFromCloud,
   };
 }
 

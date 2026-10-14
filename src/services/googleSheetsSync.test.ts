@@ -33,11 +33,14 @@ describe('googleSheetsSync service', () => {
     };
     vi.stubGlobal('localStorage', mockLocalStorage);
     vi.stubGlobal('window', { localStorage: mockLocalStorage });
+    vi.stubEnv('VITE_GAS_WEBAPP_URL', '');
+    vi.stubEnv('VITE_GAS_TOKEN', '');
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   describe('Configuration persistence (localStorage)', () => {

@@ -5,7 +5,7 @@ import { getMonthDateRange } from './utils/date';
 import { useCategories } from './hooks/useCategories';
 import { useTransactions } from './hooks/useTransactions';
 import { useFunds } from './hooks/useFunds';
-import { useAutoSync } from './hooks/useAutoSync';
+import { useAutoSync, autoSyncManager } from './hooks/useAutoSync';
 import { Header } from './components/Header';
 import { DashboardView } from './components/DashboardView';
 import { TransactionListView } from './components/TransactionListView';
@@ -41,6 +41,7 @@ export function App() {
     categories,
     loading: catLoading,
     error: catError,
+    reloadCategories,
     createCategory,
     updateCategory,
     archiveCategory,
@@ -78,7 +79,32 @@ export function App() {
     syncStatus,
     lastSyncedAt,
     triggerAutoSync,
+    pullFromCloud,
   } = useAutoSync(3000);
+
+  // Listen for data restored from Cloud (Pull) to refresh all states
+  useEffect(() => {
+    const unsubscribe = autoSyncManager.subscribeDataRestored(async () => {
+      await reloadCategories();
+      await reload();
+      await reloadFunds();
+    });
+    return unsubscribe;
+  }, [reloadCategories, reload, reloadFunds]);
+
+  // Smart background pull on app mount (respects 2-minute cooldown and metadata check)
+  useEffect(() => {
+    pullFromCloud();
+  }, [pullFromCloud]);
+
+  // Revalidate on window focus (when switching tabs or returning to app)
+  useEffect(() => {
+    const handleFocus = () => {
+      pullFromCloud();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [pullFromCloud]);
 
   const [currentTab, setCurrentTab] = useState<'dashboard' | 'history' | 'funds' | 'reports' | 'settings'>('dashboard');
 
@@ -308,7 +334,7 @@ export function App() {
         onOpenEntry={handleOpenEntry}
         syncStatus={syncStatus}
         lastSyncedAt={lastSyncedAt}
-        onSyncClick={() => setCurrentTab('settings')}
+        onSyncClick={() => pullFromCloud({ force: true })}
       />
 
 

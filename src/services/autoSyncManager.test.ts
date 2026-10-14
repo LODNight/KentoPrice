@@ -221,4 +221,78 @@ describe('AutoSyncManager', () => {
       manager.destroy();
     });
   });
+
+  describe('executePull with TTL Cooldown & Metadata verification', () => {
+    it('skips network pull if called within cooldown period without force', async () => {
+      vi.spyOn(googleSheetsSync, 'getSyncConfig').mockReturnValue({
+        webAppUrl: 'https://script.google.com/macros/s/test/exec',
+        token: 'token123',
+      });
+
+      const pullSpy = vi.spyOn(googleSheetsSync, 'pullSnapshotFromGoogleSheets').mockResolvedValue({
+        ok: true,
+        action: 'pull_snapshot',
+        data: { transactions: [], categories: [], funds: [], fundMonthlyConfigs: [] },
+        counts: { transactions: 0, categories: 0, funds: 0, fundMonthlyConfigs: 0 },
+        pulledAt: '2026-10-14T20:00:00.000Z',
+        message: 'Success',
+      });
+      vi.spyOn(backupService, 'restoreSnapshotToDatabase').mockResolvedValue({
+        counts: { transactions: 0, categories: 0, funds: 0, fundMonthlyConfigs: 0 },
+      });
+
+      const manager = new AutoSyncManager(1000, 120000); // 2-min cooldown
+
+      // First pull succeeds
+      const firstRes = await manager.executePull({ force: true });
+      expect(firstRes.updated).toBe(true);
+      expect(pullSpy).toHaveBeenCalledTimes(1);
+
+      // Immediate second pull without force is throttled by cooldown
+      const secondRes = await manager.executePull({ force: false });
+      expect(secondRes.updated).toBe(false);
+      expect(pullSpy).toHaveBeenCalledTimes(1); // not called again
+
+      // But forced pull bypasses cooldown
+      const thirdRes = await manager.executePull({ force: true });
+      expect(thirdRes.updated).toBe(true);
+      expect(pullSpy).toHaveBeenCalledTimes(2);
+
+      manager.destroy();
+    });
+
+    it('notifies subscribeDataRestored listeners when snapshot is restored', async () => {
+      vi.spyOn(googleSheetsSync, 'getSyncConfig').mockReturnValue({
+        webAppUrl: 'https://script.google.com/macros/s/test/exec',
+        token: 'token123',
+      });
+
+      vi.spyOn(googleSheetsSync, 'pullSnapshotFromGoogleSheets').mockResolvedValue({
+        ok: true,
+        action: 'pull_snapshot',
+        data: { transactions: [], categories: [], funds: [], fundMonthlyConfigs: [] },
+        counts: { transactions: 5, categories: 3, funds: 2, fundMonthlyConfigs: 2 },
+        pulledAt: '2026-10-14T20:00:00.000Z',
+        message: 'Success',
+      });
+
+      const restoreSpy = vi.spyOn(backupService, 'restoreSnapshotToDatabase').mockResolvedValue({
+        counts: { transactions: 5, categories: 3, funds: 2, fundMonthlyConfigs: 2 },
+      });
+
+      const manager = new AutoSyncManager(1000);
+      let restoredNotified = false;
+      const unsub = manager.subscribeDataRestored(() => {
+        restoredNotified = true;
+      });
+
+      const res = await manager.executePull({ force: true });
+      expect(res.updated).toBe(true);
+      expect(restoreSpy).toHaveBeenCalledOnce();
+      expect(restoredNotified).toBe(true);
+
+      unsub();
+      manager.destroy();
+    });
+  });
 });
