@@ -422,6 +422,26 @@ This document tracks all Architecture Decision Records (ADR) and Product Decisio
      * Điểm truy cập quản lý chuyên sâu trong `SettingsView`.
      * Nút thêm danh mục nhanh trực tiếp trong bộ chọn danh mục của `TransactionEntryModal` để người dùng không bị gián đoạn mạch ghi chép.
 
+---
+
+## PDR-024: Tự Động Đồng Bộ Ngầm (Auto Background Sync) & Vercel Deployment
+
+* **Trạng thái**: Confirmed (PO xác nhận) | **Ngày**: 2026-10-14
+* **Bối cảnh**: Người dùng muốn dữ liệu thu chi cá nhân được lưu trữ bền vững trên đám mây (Google Sheets) mà không phải bấm nút "Đẩy ngay" thủ công mỗi lần ghi chép, đồng thời triển khai web app lên Vercel để truy cập đa thiết bị.
+* **Quyết định đã chốt**:
+  1. **Triết lý Local-First & Non-Blocking**:
+     * Mọi thao tác thêm/sửa/xóa giao dịch, quỹ, danh mục đều được ghi vào IndexedDB lập tức để đảm bảo trải nghiệm nhập liệu dưới 5 giây không có độ trễ.
+     * Tự động kích hoạt cơ chế đồng bộ ngầm với thời gian debounce 3 giây (`debounceMs = 3000`) qua `AutoSyncManager`.
+  2. **Trạng thái phản hồi trực quan (Header Status Pill)**:
+     * Thanh Header hiển thị trạng thái đồng bộ: `Đang đồng bộ...` (xoay nhẹ) $\rightarrow$ `✓ Đã lưu Cloud` (xanh ngọc, tự ẩn sau 4 giây) hoặc `Lỗi Cloud` (nếu mất mạng).
+  3. **Kiểm soát linh hoạt (User Control)**:
+     * Cung cấp nút gạt bật/tắt Auto Sync ngay trong màn hình Cài đặt Đồng bộ Google Sheets.
+     * Mặc định ẩn toàn bộ thông tin nhạy cảm (Web App URL, Secret Token) dưới dạng collapsible để giao diện gọn gàng, tinh tế.
+  4. **Kiến trúc Triển khai Vercel**:
+     * Cung cấp `vercel.json` định tuyến SPA rewrites (`/(.*) -> /index.html`) và cache assets bất biến.
+     * Hỗ trợ nạp cấu hình tự động qua biến môi trường `VITE_GAS_WEBAPP_URL` và `VITE_GAS_TOKEN` để deploy một lần là dùng ngay.
+
+
 
 
 

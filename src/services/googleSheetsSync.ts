@@ -77,19 +77,24 @@ const STORAGE_KEY_CONFIG = 'qlthuchi_gas_sync_config';
  * Lấy cấu hình Google Apps Script Sync từ localStorage
  */
 export function getSyncConfig(): GoogleSheetsSyncConfig {
+  const envUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GAS_WEBAPP_URL) || '';
+  const envToken = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GAS_TOKEN) || '';
+
   if (typeof window === 'undefined' || !window.localStorage) {
-    return { webAppUrl: '', token: '' };
+    return { webAppUrl: envUrl, token: envToken };
   }
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY_CONFIG);
-    if (!raw) return { webAppUrl: '', token: '' };
+    if (!raw) return { webAppUrl: envUrl, token: envToken };
     const parsed = JSON.parse(raw);
+    const storedUrl = typeof parsed.webAppUrl === 'string' ? parsed.webAppUrl.trim() : '';
+    const storedToken = typeof parsed.token === 'string' ? parsed.token.trim() : '';
     return {
-      webAppUrl: typeof parsed.webAppUrl === 'string' ? parsed.webAppUrl.trim() : '',
-      token: typeof parsed.token === 'string' ? parsed.token.trim() : '',
+      webAppUrl: storedUrl || envUrl,
+      token: storedToken || envToken,
     };
   } catch {
-    return { webAppUrl: '', token: '' };
+    return { webAppUrl: envUrl, token: envToken };
   }
 }
 

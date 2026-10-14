@@ -113,10 +113,23 @@ Definition   Specs        & Data Model  (Mock Data)  (Full Logic) Refinement   R
 
 ---
 
-### Phase 6: MVP Release & Documentation
+### Phase 6: MVP Release & Documentation (Completed)
 * **Goal**: Final production build verification, deployment readiness, and comprehensive project documentation.
 * **Deliverables**:
-  * Clean, optimized production bundle build.
-  * Verified persistent data survival across browser refreshes and tab closures.
-  * Polished user documentation (`README.md` with setup and usage instructions).
+  * [x] Clean, optimized production bundle build.
+  * [x] Verified persistent data survival across browser refreshes and tab closures.
+  * [x] Polished user documentation (`README.md` with setup and usage instructions).
 * **Exit Criteria**: Production build verified, zero build warnings, ready for local execution or static deployment.
+
+---
+
+### Phase 7: Google Sheets Cloud Sync & Vercel Deployment (Completed & Ready)
+* **Goal**: Implement Google Apps Script Web App cloud synchronization (Snapshot + Auto background sync) and prepare seamless Vercel production deployment.
+* **Deliverables**:
+  * [x] Step 1: Prototype validation & CORS investigation (`docs/STEP2_PROTOTYPE_GUIDE.md`)
+  * [x] Step 2: Google Apps Script Web App Ping test (`google-apps-script/ping_prototype.gs`)
+  * [x] Step 3: 5 Sheets schema snapshot engine (`google-apps-script/sync_backend.gs`, `src/services/googleSheetsSync.ts`)
+  * [x] Hướng 3: Auto Background Sync Engine with 3s debounce, Header pill indicator & UI toggle (`src/services/autoSyncManager.ts`, `src/hooks/useAutoSync.ts`)
+  * [x] Hướng 4: Vercel deployment readiness (`vercel.json`, `.env.example`, `docs/VERCEL_DEPLOYMENT_GUIDE.md`)
+* **Exit Criteria**: 113/113 tests pass; clean Vite build; full cloud sync verified in browser; Vercel ready.
+
