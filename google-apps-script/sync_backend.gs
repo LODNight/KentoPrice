@@ -378,6 +378,7 @@ function handlePullSnapshot(ss) {
       fundMonthlyConfigs: configs.length,
     },
     pulledAt: new Date().toISOString(),
+    lastSyncedAt: getMetaKey(ss, 'last_snapshot_at'),
     message: 'Tải dữ liệu từ Google Sheets thành công.',
   });
 }

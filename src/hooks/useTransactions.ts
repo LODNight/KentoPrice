@@ -8,7 +8,7 @@ export function useTransactions(period: PeriodFilter) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (): Promise<Transaction[]> => {
     setLoading(true);
     setError(null);
     try {
@@ -22,8 +22,10 @@ export function useTransactions(period: PeriodFilter) {
       // 2. Fetch all transactions (for full ledger history)
       const fullList = await transactionRepository.getAll();
       setAllTransactions(fullList);
+      return fullList;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Lỗi khi tải dữ liệu giao dịch');
+      return [];
     } finally {
       setLoading(false);
     }

@@ -294,5 +294,93 @@ describe('AutoSyncManager', () => {
       unsub();
       manager.destroy();
     });
+
+    it('cancels pending auto-push debounce timer when executePull is initiated', async () => {
+      vi.spyOn(googleSheetsSync, 'getSyncConfig').mockReturnValue({
+        webAppUrl: 'https://script.google.com/macros/s/test/exec',
+        token: 'token123',
+      });
+
+      const pushSpy = vi.spyOn(googleSheetsSync, 'pushSnapshotToGoogleSheets').mockResolvedValue({
+        ok: true,
+        action: 'push_snapshot',
+        counts: { transactions: 0, categories: 0, funds: 0, fundMonthlyConfigs: 0 },
+        syncedAt: '2026-10-14T20:00:00.000Z',
+        message: 'Success',
+      });
+
+      vi.spyOn(googleSheetsSync, 'pullSnapshotFromGoogleSheets').mockResolvedValue({
+        ok: true,
+        action: 'pull_snapshot',
+        data: { transactions: [], categories: [], funds: [], fundMonthlyConfigs: [] },
+        counts: { transactions: 1, categories: 1, funds: 1, fundMonthlyConfigs: 1 },
+        pulledAt: '2026-10-14T20:00:00.000Z',
+        message: 'Success',
+      });
+      vi.spyOn(backupService, 'restoreSnapshotToDatabase').mockResolvedValue({
+        counts: { transactions: 1, categories: 1, funds: 1, fundMonthlyConfigs: 1 },
+      });
+
+      const manager = new AutoSyncManager(3000);
+      // Schedule an auto push
+      manager.triggerAutoSync();
+
+      // Before timer fires, pull from cloud
+      await manager.executePull({ force: true });
+
+      // Fast-forward past the 3s debounce
+      await vi.advanceTimersByTimeAsync(4000);
+
+      // Push should have been cancelled, so pushSpy is NOT called
+      expect(pushSpy).not.toHaveBeenCalled();
+
+      manager.destroy();
+    });
+  });
+
+  describe('Conflict Safeguard in executeSync', () => {
+    it('aborts push and pulls from cloud when cloud has newer changes', async () => {
+      vi.spyOn(googleSheetsSync, 'getSyncConfig').mockReturnValue({
+        webAppUrl: 'https://script.google.com/macros/s/test/exec',
+        token: 'token123',
+      });
+
+      // Manager believes lastCloudSyncedAt was T1
+      localStore['qlthuchi_last_cloud_synced_at'] = '2026-10-14T10:00:00.000Z';
+
+      // Cloud now has T2 (newer, pushed by another browser)
+      vi.spyOn(googleSheetsSync, 'getGoogleSheetsSyncMeta').mockResolvedValue({
+        ok: true,
+        action: 'get_meta',
+        counts: { transactions: 10, categories: 5, funds: 2, fundMonthlyConfigs: 2 },
+        lastSyncedAt: '2026-10-14T11:00:00.000Z',
+        schemaVersion: 2,
+      });
+
+      const pushSpy = vi.spyOn(googleSheetsSync, 'pushSnapshotToGoogleSheets');
+      const pullSpy = vi.spyOn(googleSheetsSync, 'pullSnapshotFromGoogleSheets').mockResolvedValue({
+        ok: true,
+        action: 'pull_snapshot',
+        data: { transactions: [], categories: [], funds: [], fundMonthlyConfigs: [] },
+        counts: { transactions: 10, categories: 5, funds: 2, fundMonthlyConfigs: 2 },
+        pulledAt: '2026-10-14T11:00:00.000Z',
+        message: 'Success',
+      });
+      vi.spyOn(backupService, 'restoreSnapshotToDatabase').mockResolvedValue({
+        counts: { transactions: 10, categories: 5, funds: 2, fundMonthlyConfigs: 2 },
+      });
+
+      const manager = new AutoSyncManager(1000);
+
+      // Execute sync should detect newer cloud data and abort push, running pull instead
+      const syncResult = await manager.executeSync();
+
+      expect(syncResult).toBe(false);
+      expect(pushSpy).not.toHaveBeenCalled();
+      expect(pullSpy).toHaveBeenCalledOnce();
+
+      manager.destroy();
+    });
   });
 });
+

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import type { Transaction, PeriodFilter, TransactionType } from './types';
+import type { Transaction, PeriodFilter, TransactionType, BudgetMode } from './types';
 import { calculateSummary } from './utils/calculator';
 import { getMonthDateRange } from './utils/date';
 import { useCategories } from './hooks/useCategories';
@@ -83,27 +83,60 @@ export function App() {
   } = useAutoSync(3000);
 
   // Listen for data restored from Cloud (Pull) to refresh all states
+  // After restore, auto-navigate to the period containing the most recent pulled transaction
   useEffect(() => {
     const unsubscribe = autoSyncManager.subscribeDataRestored(async () => {
       await reloadCategories();
-      await reload();
+      const allTxns = await reload();
       await reloadFunds();
+
+      // Auto-navigate to the month of the most recent transaction if current period is empty
+      if (allTxns && allTxns.length > 0) {
+        // Find the most recent transaction date
+        const latestDateStr = allTxns.reduce((latest: string, txn: { transactionDate: string }) =>
+          txn.transactionDate > latest ? txn.transactionDate : latest, '');
+
+        if (latestDateStr) {
+          const [yyyy, mm] = latestDateStr.split('-').map(Number);
+          setPeriod((prev) => {
+            // Only switch if the current period has no data in this month
+            const hasDataInCurrentPeriod = allTxns.some(
+              (t: { transactionDate: string }) => t.transactionDate >= prev.startDate && t.transactionDate <= prev.endDate
+            );
+            if (!hasDataInCurrentPeriod && yyyy && mm) {
+              const { startDate, endDate } = getMonthDateRange(yyyy, mm);
+              return { type: 'month', year: yyyy, month: mm, startDate, endDate };
+            }
+            return prev;
+          });
+        }
+      }
     });
     return unsubscribe;
-  }, [reloadCategories, reload, reloadFunds]);
+  }, [reloadCategories, reload, reloadFunds, setPeriod]);
+
 
   // Smart background pull on app mount (respects 2-minute cooldown and metadata check)
   useEffect(() => {
     pullFromCloud();
   }, [pullFromCloud]);
 
-  // Revalidate on window focus (when switching tabs or returning to app)
+  // Revalidate on window focus OR tab visibility change (handles tab switching, mobile, etc.)
   useEffect(() => {
     const handleFocus = () => {
       pullFromCloud();
     };
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        pullFromCloud();
+      }
+    };
     window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [pullFromCloud]);
 
   const [currentTab, setCurrentTab] = useState<'dashboard' | 'history' | 'funds' | 'reports' | 'settings'>('dashboard');
@@ -118,17 +151,89 @@ export function App() {
   });
   const [isCategoryManageOpen, setIsCategoryManageOpen] = useState(false);
 
-  // Sync automatically when categories or funds are altered
-  const isInitialLoadedRef = useRef(false);
-  useEffect(() => {
-    if (!isInitialLoadedRef.current) {
-      if (categories.length > 0 || allFunds.length > 0) {
-        isInitialLoadedRef.current = true;
-      }
-      return;
-    }
-    triggerAutoSync();
-  }, [categories, allFunds, triggerAutoSync]);
+  // Explicit mutation handlers for Categories with auto-sync trigger
+  const handleCreateCategory = useCallback(
+    async (data: Parameters<typeof createCategory>[0]) => {
+      const res = await createCategory(data);
+      triggerAutoSync();
+      return res;
+    },
+    [createCategory, triggerAutoSync]
+  );
+
+  const handleUpdateCategory = useCallback(
+    async (cat: Parameters<typeof updateCategory>[0]) => {
+      await updateCategory(cat);
+      triggerAutoSync();
+    },
+    [updateCategory, triggerAutoSync]
+  );
+
+  const handleArchiveCategory = useCallback(
+    async (id: string) => {
+      await archiveCategory(id);
+      triggerAutoSync();
+    },
+    [archiveCategory, triggerAutoSync]
+  );
+
+  const handleRestoreCategory = useCallback(
+    async (id: string) => {
+      await restoreCategory(id);
+      triggerAutoSync();
+    },
+    [restoreCategory, triggerAutoSync]
+  );
+
+  const handleDeleteCategory = useCallback(
+    async (id: string) => {
+      await deleteCategory(id);
+      triggerAutoSync();
+    },
+    [deleteCategory, triggerAutoSync]
+  );
+
+  // Explicit mutation handlers for Funds with auto-sync trigger
+  const handleCreateFund = useCallback(
+    async (data: Parameters<typeof createFund>[0]) => {
+      const res = await createFund(data);
+      triggerAutoSync();
+      return res;
+    },
+    [createFund, triggerAutoSync]
+  );
+
+  const handleUpdateFund = useCallback(
+    async (data: Parameters<typeof updateFund>[0]) => {
+      await updateFund(data);
+      triggerAutoSync();
+    },
+    [updateFund, triggerAutoSync]
+  );
+
+  const handleUpdateMonthConfig = useCallback(
+    async (fundId: string, ym: string, budget: number, mode?: BudgetMode) => {
+      await updateMonthConfig(fundId, ym, budget, mode);
+      triggerAutoSync();
+    },
+    [updateMonthConfig, triggerAutoSync]
+  );
+
+  const handleArchiveFund = useCallback(
+    async (id: string) => {
+      await archiveFund(id);
+      triggerAutoSync();
+    },
+    [archiveFund, triggerAutoSync]
+  );
+
+  const handleRestoreFund = useCallback(
+    async (id: string) => {
+      await restoreFund(id);
+      triggerAutoSync();
+    },
+    [restoreFund, triggerAutoSync]
+  );
 
   // Purely derived summary report (stateless, zero stale caching)
   const summary = useMemo(() => {
@@ -389,11 +494,11 @@ export function App() {
                 archivedFunds={archivedFunds}
                 activeSummaries={activeFundSummaries}
                 budgetOverview={budgetOverview}
-                onCreateFund={createFund}
-                onUpdateFund={updateFund}
-                onUpdateMonthConfig={updateMonthConfig}
-                onArchiveFund={archiveFund}
-                onRestoreFund={restoreFund}
+                onCreateFund={handleCreateFund}
+                onUpdateFund={handleUpdateFund}
+                onUpdateMonthConfig={handleUpdateMonthConfig}
+                onArchiveFund={handleArchiveFund}
+                onRestoreFund={handleRestoreFund}
               />
             )}
 
@@ -436,7 +541,7 @@ export function App() {
         allFunds={allFunds}
         onClose={() => setIsEntryOpen(false)}
         onSave={handleSaveTransaction}
-        onCreateCategory={createCategory}
+        onCreateCategory={handleCreateCategory}
       />
 
       {/* Category Management Modal */}
@@ -444,11 +549,11 @@ export function App() {
         isOpen={isCategoryManageOpen}
         categories={categories}
         onClose={() => setIsCategoryManageOpen(false)}
-        onCreateCategory={createCategory}
-        onUpdateCategory={updateCategory}
-        onArchiveCategory={archiveCategory}
-        onRestoreCategory={restoreCategory}
-        onDeleteCategory={deleteCategory}
+        onCreateCategory={handleCreateCategory}
+        onUpdateCategory={handleUpdateCategory}
+        onArchiveCategory={handleArchiveCategory}
+        onRestoreCategory={handleRestoreCategory}
+        onDeleteCategory={handleDeleteCategory}
         getCategoryUsage={getCategoryUsage}
       />
 

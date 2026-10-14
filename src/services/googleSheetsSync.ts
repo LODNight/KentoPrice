@@ -51,6 +51,7 @@ export interface PullSnapshotResponse {
     fundMonthlyConfigs: number;
   };
   pulledAt: string;
+  lastSyncedAt?: string;
   message: string;
   code?: string;
   error?: string;

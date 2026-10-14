@@ -58,9 +58,10 @@ export function saveLastCloudSyncedAt(timestamp: string): void {
 
 export class AutoSyncManager {
   private debounceMs: number;
-  private pullCooldownMs: number;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private isSyncing = false;
+  private isPulling = false;
+  private postPullGuardTimer: ReturnType<typeof setTimeout> | null = null;
   private status: AutoSyncStatus = 'idle';
   private lastSyncedAt: Date | null = null;
   private lastPulledAt: Date | null = null;
@@ -70,9 +71,8 @@ export class AutoSyncManager {
   private listeners: Set<(state: AutoSyncState) => void> = new Set();
   private dataRestoredListeners: Set<() => void> = new Set();
 
-  constructor(debounceMs = 3000, pullCooldownMs = 120000) {
+  constructor(debounceMs = 3000) {
     this.debounceMs = debounceMs;
-    this.pullCooldownMs = pullCooldownMs;
     this.isAutoSyncEnabled = getAutoSyncEnabled();
     this.lastPulledAt = getLastPulledAt();
     this.lastCloudSyncedAt = getLastCloudSyncedAt();
@@ -126,7 +126,7 @@ export class AutoSyncManager {
    * Pushes the current local IndexedDB snapshot to Google Sheets
    */
   public async executeSync(): Promise<boolean> {
-    if (this.isSyncing) {
+    if (this.isSyncing || this.isPulling) {
       return false;
     }
 
@@ -142,6 +142,23 @@ export class AutoSyncManager {
       this.status = 'syncing';
       this.lastError = null;
       this.notify();
+
+      // CONFLICT SAFEGUARD: Before overwriting cloud, verify cloud does not have newer changes from another device!
+      if (this.lastCloudSyncedAt) {
+        try {
+          const meta = await getGoogleSheetsSyncMeta(config.webAppUrl, config.token);
+          if (meta.ok && meta.lastSyncedAt && meta.lastSyncedAt !== this.lastCloudSyncedAt) {
+            console.warn(
+              '[AutoSync] Phát hiện dữ liệu mới hơn trên Cloud từ thiết bị khác. Hủy push và thực hiện kéo về trước để tránh mất dữ liệu!'
+            );
+            this.isSyncing = false;
+            await this.executePull({ force: true });
+            return false;
+          }
+        } catch {
+          // If offline / network error checking meta, proceed with push
+        }
+      }
 
       const backupData = await generateBackupData();
       const res = await pushSnapshotToGoogleSheets(config.webAppUrl, config.token, backupData);
@@ -167,7 +184,7 @@ export class AutoSyncManager {
 
   /**
    * Smart Pull from Google Sheets:
-   * - Respects TTL cooldown window (default 2 minutes) unless force is true
+   * - Respects lightweight throttle (2.5 seconds) to prevent rapid event double-firing
    * - Checks lightweight metadata before downloading full snapshot
    * - Restores snapshot directly into IndexedDB
    * - Fires data restored callbacks to trigger UI refresh
@@ -188,40 +205,57 @@ export class AutoSyncManager {
       return { updated: false };
     }
 
-    // 1. Check TTL Cooldown unless forced
+    // Cancel any pending auto-push debounce timer before pulling to prevent stale push race conditions
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
+
     const now = Date.now();
-    if (!options?.force && this.lastPulledAt) {
-      const elapsed = now - this.lastPulledAt.getTime();
-      if (elapsed < this.pullCooldownMs) {
-        // Within cooldown window: reuse local-first cached state without network request
-        return { updated: false };
-      }
+
+    // 1. Throttle: avoid spamming get_meta within 2.5 seconds (prevents focus + visibilitychange rapid double-firing)
+    const metaThrottleMs = 2500;
+    const withinMetaThrottle =
+      !options?.force && this.lastPulledAt && now - this.lastPulledAt.getTime() < metaThrottleMs;
+
+    if (withinMetaThrottle) {
+      // Too soon since last pull check — skip to avoid duplicate concurrent calls
+      return { updated: false };
     }
 
     try {
+      this.isPulling = true;
       this.isSyncing = true;
       this.status = 'syncing';
       this.lastError = null;
       this.notify();
 
-      // 2. Lightweight Metadata Check unless forced
+      let cloudLastSyncedAt: string | null = null;
+
+      // 2. Always do lightweight Metadata Check first (unless forced)
+      //    This ensures cross-device sync: if another browser pushed new data,
+      //    this will detect it immediately and download full snapshot.
       if (!options?.force && this.lastCloudSyncedAt) {
         try {
           const meta = await getGoogleSheetsSyncMeta(config.webAppUrl, config.token);
-          if (meta.ok && meta.lastSyncedAt && meta.lastSyncedAt === this.lastCloudSyncedAt) {
-            // Cloud has not changed since our last known sync!
-            this.lastPulledAt = new Date(now);
-            saveLastPulledAt(this.lastPulledAt);
-            this.status = 'synced';
-            this.notify();
-            return { updated: false };
+          if (meta.ok && meta.lastSyncedAt) {
+            cloudLastSyncedAt = meta.lastSyncedAt;
+            if (meta.lastSyncedAt === this.lastCloudSyncedAt) {
+              // ✅ Cloud unchanged since our last sync — skip full download
+              this.lastPulledAt = new Date(now);
+              saveLastPulledAt(this.lastPulledAt);
+              this.status = 'synced';
+              this.notify();
+              return { updated: false };
+            }
+            // ℹ️ Cloud has newer data → fall through to full pull
           }
         } catch {
-          // Fall through to pull snapshot if meta check is unsupported
+          // Network error on meta check → fall through to full pull attempt
         }
       }
 
-      // 3. Pull Snapshot
+      // 3. Pull full Snapshot from cloud
       const res = await pullSnapshotFromGoogleSheets(config.webAppUrl, config.token);
       if (!res.ok || !res.data) {
         throw new Error(res.error || res.message || 'Không thể tải dữ liệu từ Google Sheets');
@@ -233,9 +267,10 @@ export class AutoSyncManager {
       this.lastPulledAt = new Date(now);
       saveLastPulledAt(this.lastPulledAt);
 
-      if (res.pulledAt) {
-        this.lastCloudSyncedAt = res.pulledAt;
-        saveLastCloudSyncedAt(res.pulledAt);
+      const targetCloudSyncedAt = cloudLastSyncedAt || res.lastSyncedAt || res.pulledAt;
+      if (targetCloudSyncedAt) {
+        this.lastCloudSyncedAt = targetCloudSyncedAt;
+        saveLastCloudSyncedAt(targetCloudSyncedAt);
       }
 
       this.lastSyncedAt = this.lastPulledAt;
@@ -254,11 +289,24 @@ export class AutoSyncManager {
       return { updated: false, error: msg };
     } finally {
       this.isSyncing = false;
+      // Keep isPulling = true for a brief window so that state-change side effects
+      // triggered by restoreSnapshotToDatabase() do NOT immediately push back to GSheets
+      if (this.postPullGuardTimer) clearTimeout(this.postPullGuardTimer);
+      this.postPullGuardTimer = setTimeout(() => {
+        this.isPulling = false;
+        this.postPullGuardTimer = null;
+      }, 5000); // 5-second post-pull guard window
     }
   }
 
   public triggerAutoSync(): void {
     if (!this.isAutoSyncEnabled) {
+      return;
+    }
+
+    // Guard: suppress auto-push triggered by state changes that are side effects of a Pull
+    // (e.g., restoreSnapshotToDatabase → reloadCategories → useEffect → triggerAutoSync)
+    if (this.isPulling) {
       return;
     }
 
@@ -292,6 +340,11 @@ export class AutoSyncManager {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
     }
+    if (this.postPullGuardTimer) {
+      clearTimeout(this.postPullGuardTimer);
+      this.postPullGuardTimer = null;
+    }
+    this.isPulling = false;
     this.listeners.clear();
     this.dataRestoredListeners.clear();
   }
