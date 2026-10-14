@@ -6,3 +6,7 @@ import type { ICategoryRepository, ITransactionRepository, IFundRepository } fro
 export const categoryRepository: ICategoryRepository = new IndexedDBCategoryRepository();
 export const transactionRepository: ITransactionRepository = new IndexedDBTransactionRepository(categoryRepository);
 export const fundRepository: IFundRepository = new IndexedDBFundRepository();
+
+export * from './backup';
+export * from './googleSheetsSync';
+
