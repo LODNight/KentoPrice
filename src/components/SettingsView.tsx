@@ -34,6 +34,8 @@ import {
   pushSnapshotToGoogleSheets,
   getGoogleSheetsSyncMeta,
 } from '../services/googleSheetsSync';
+import { autoSyncManager } from '../services/autoSyncManager';
+
 
 interface SettingsViewProps {
   totalTransactionsCount: number;
@@ -75,6 +77,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [syncMessage, setSyncMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [metaInfo, setMetaInfo] = useState<{ counts?: Record<string, number>; lastSyncedAt?: string | null } | null>(null);
   const [showConfig, setShowConfig] = useState<boolean>(false);
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState<boolean>(() => autoSyncManager.getState().isAutoSyncEnabled);
+
+  const handleToggleAutoSync = () => {
+    const nextVal = !autoSyncEnabled;
+    setAutoSyncEnabled(nextVal);
+    autoSyncManager.setAutoSyncEnabled(nextVal);
+    setSyncMessage({
+      type: 'info',
+      text: nextVal
+        ? 'Đã BẬT tự động đồng bộ ngầm: Mọi thay đổi sẽ tự động đẩy lên Google Sheets sau 3 giây.'
+        : 'Đã TẮT tự động đồng bộ ngầm.',
+    });
+  };
 
 
   const handleExportBackup = async () => {
@@ -749,6 +764,81 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </h3>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {/* Auto Background Sync Switch */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '14px 16px',
+                borderRadius: 'var(--radius-md)',
+                backgroundColor: autoSyncEnabled
+                  ? 'rgba(16, 185, 129, 0.08)'
+                  : 'var(--color-surface-elevated)',
+                border: `1px solid ${
+                  autoSyncEnabled ? 'rgba(16, 185, 129, 0.35)' : 'var(--color-border-subtle)'
+                }`,
+                transition: 'all var(--transition-normal)',
+              }}
+            >
+              <div style={{ paddingRight: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                    Tự động đồng bộ ngầm (Auto Sync)
+                  </span>
+                  <span
+                    style={{
+                      fontSize: '0.6875rem',
+                      fontWeight: 600,
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      backgroundColor: autoSyncEnabled
+                        ? 'rgba(16, 185, 129, 0.2)'
+                        : 'var(--color-border-subtle)',
+                      color: autoSyncEnabled ? 'var(--color-income)' : 'var(--color-text-muted)',
+                    }}
+                  >
+                    {autoSyncEnabled ? 'ĐANG BẬT' : 'TẮT'}
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginTop: '4px', lineHeight: 1.4 }}>
+                  Tự động sao lưu lên Google Sheets sau 3 giây mỗi khi bạn thêm, sửa hoặc xóa dữ liệu (không làm chậm ứng dụng).
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleToggleAutoSync}
+                role="switch"
+                aria-checked={autoSyncEnabled}
+                aria-label="Bật hoặc tắt tự động đồng bộ ngầm"
+                style={{
+                  width: '46px',
+                  height: '26px',
+                  borderRadius: '13px',
+                  backgroundColor: autoSyncEnabled ? 'var(--color-income)' : 'var(--color-border)',
+                  position: 'relative',
+                  border: 'none',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                  transition: 'background-color var(--transition-fast)',
+                  padding: 0,
+                }}
+              >
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: '3px',
+                    left: autoSyncEnabled ? '23px' : '3px',
+                    width: '20px',
+                    height: '20px',
+                    borderRadius: '50%',
+                    backgroundColor: '#ffffff',
+                    transition: 'left var(--transition-fast)',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                  }}
+                />
+              </button>
+            </div>
             {/* Action 1: Kiểm tra kết nối */}
             <div
               style={{

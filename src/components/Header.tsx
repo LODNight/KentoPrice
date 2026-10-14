@@ -7,18 +7,28 @@ import {
   PieChart,
   Settings,
   Briefcase,
+  Cloud,
+  CloudOff,
+  Loader2,
+  Check,
 } from 'lucide-react';
 
 interface HeaderProps {
   currentTab: 'dashboard' | 'history' | 'funds' | 'reports' | 'settings';
   onSelectTab: (tab: 'dashboard' | 'history' | 'funds' | 'reports' | 'settings') => void;
   onOpenEntry: (type: 'expense' | 'income') => void;
+  syncStatus?: 'idle' | 'syncing' | 'synced' | 'error' | 'disabled';
+  lastSyncedAt?: Date | null;
+  onSyncClick?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   currentTab,
   onSelectTab,
   onOpenEntry,
+  syncStatus = 'idle',
+  lastSyncedAt,
+  onSyncClick,
 }) => {
   return (
     <header className="app-header">
@@ -74,7 +84,71 @@ export const Header: React.FC<HeaderProps> = ({
         </nav>
 
         {/* Right: Controls & Quick Entry Actions */}
-        <div className="header-right-group">
+        <div className="header-right-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* Cloud Sync Status Indicator */}
+          {syncStatus !== 'disabled' && (
+            <button
+              type="button"
+              onClick={onSyncClick || (() => onSelectTab('settings'))}
+              className="btn-sync-status-indicator"
+              title={
+                syncStatus === 'syncing'
+                  ? 'Đang tự động đồng bộ lên Google Sheets...'
+                  : syncStatus === 'synced'
+                  ? `Đã lưu đám mây lúc ${lastSyncedAt ? lastSyncedAt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : ''}`
+                  : syncStatus === 'error'
+                  ? 'Đồng bộ Google Sheets gặp lỗi (Bấm để xem)'
+                  : 'Đồng bộ Google Sheets'
+              }
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '4px 8px',
+                borderRadius: 'var(--radius-full)',
+                fontSize: '0.6875rem',
+                fontWeight: 600,
+                background: 'var(--color-surface)',
+                border: `1px solid ${
+                  syncStatus === 'error'
+                    ? 'rgba(239, 68, 68, 0.4)'
+                    : syncStatus === 'synced'
+                    ? 'rgba(16, 185, 129, 0.4)'
+                    : 'var(--color-border-subtle)'
+                }`,
+                cursor: 'pointer',
+                color:
+                  syncStatus === 'syncing'
+                    ? 'var(--color-brand-primary)'
+                    : syncStatus === 'synced'
+                    ? 'var(--color-income)'
+                    : syncStatus === 'error'
+                    ? 'var(--color-expense)'
+                    : 'var(--color-text-secondary)',
+                transition: 'all var(--transition-fast)',
+              }}
+            >
+              {syncStatus === 'syncing' ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : syncStatus === 'synced' ? (
+                <Check size={12} strokeWidth={2.5} />
+              ) : syncStatus === 'error' ? (
+                <CloudOff size={12} />
+              ) : (
+                <Cloud size={12} />
+              )}
+              <span style={{ whiteSpace: 'nowrap' }}>
+                {syncStatus === 'syncing'
+                  ? 'Đang lưu...'
+                  : syncStatus === 'synced'
+                  ? 'Đã lưu Cloud'
+                  : syncStatus === 'error'
+                  ? 'Lỗi Cloud'
+                  : 'Cloud'}
+              </span>
+            </button>
+          )}
+
           {/* Mobile Settings Shortcut */}
           <button
             type="button"

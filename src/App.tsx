@@ -1,10 +1,11 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import type { Transaction, PeriodFilter, TransactionType } from './types';
 import { calculateSummary } from './utils/calculator';
 import { getMonthDateRange } from './utils/date';
 import { useCategories } from './hooks/useCategories';
 import { useTransactions } from './hooks/useTransactions';
 import { useFunds } from './hooks/useFunds';
+import { useAutoSync } from './hooks/useAutoSync';
 import { Header } from './components/Header';
 import { DashboardView } from './components/DashboardView';
 import { TransactionListView } from './components/TransactionListView';
@@ -72,6 +73,13 @@ export function App() {
     reloadFunds,
   } = useFunds(period, allTransactions);
 
+  // Layer 2: Automatic Background Cloud Sync Engine
+  const {
+    syncStatus,
+    lastSyncedAt,
+    triggerAutoSync,
+  } = useAutoSync(3000);
+
   const [currentTab, setCurrentTab] = useState<'dashboard' | 'history' | 'funds' | 'reports' | 'settings'>('dashboard');
 
   // Modal States
@@ -83,6 +91,18 @@ export function App() {
     txnId: null,
   });
   const [isCategoryManageOpen, setIsCategoryManageOpen] = useState(false);
+
+  // Sync automatically when categories or funds are altered
+  const isInitialLoadedRef = useRef(false);
+  useEffect(() => {
+    if (!isInitialLoadedRef.current) {
+      if (categories.length > 0 || allFunds.length > 0) {
+        isInitialLoadedRef.current = true;
+      }
+      return;
+    }
+    triggerAutoSync();
+  }, [categories, allFunds, triggerAutoSync]);
 
   // Purely derived summary report (stateless, zero stale caching)
   const summary = useMemo(() => {
@@ -118,8 +138,9 @@ export function App() {
     if (deleteModal.txnId) {
       await deleteTransaction(deleteModal.txnId);
       setDeleteModal({ isOpen: false, txnId: null });
+      triggerAutoSync();
     }
-  }, [deleteModal.txnId, deleteTransaction]);
+  }, [deleteModal.txnId, deleteTransaction, triggerAutoSync]);
 
   // Save transaction handler (Create or Update with IndexedDB persistence)
   const handleSaveTransaction = useCallback(
@@ -143,9 +164,11 @@ export function App() {
         await createTransaction(data);
       }
       await reloadFunds();
+      triggerAutoSync();
     },
-    [editingTransaction, createTransaction, updateTransaction, reloadFunds]
+    [editingTransaction, createTransaction, updateTransaction, reloadFunds, triggerAutoSync]
   );
+
 
   // Optional helper to seed sample data into IndexedDB for instant testing
   const handleSeedSampleData = useCallback(async () => {
@@ -283,7 +306,11 @@ export function App() {
         currentTab={currentTab}
         onSelectTab={setCurrentTab}
         onOpenEntry={handleOpenEntry}
+        syncStatus={syncStatus}
+        lastSyncedAt={lastSyncedAt}
+        onSyncClick={() => setCurrentTab('settings')}
       />
+
 
       {/* Main View Area */}
       <main className="main-content">
