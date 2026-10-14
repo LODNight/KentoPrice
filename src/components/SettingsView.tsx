@@ -22,6 +22,8 @@ import {
   FileSpreadsheet,
   UploadCloud,
   KeyRound,
+  ChevronDown,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { exportAndDownloadBackup, generateBackupData } from '../services/backup';
 import {
@@ -72,6 +74,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [syncActionType, setSyncActionType] = useState<'ping' | 'init' | 'push' | 'meta' | null>(null);
   const [syncMessage, setSyncMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [metaInfo, setMetaInfo] = useState<{ counts?: Record<string, number>; lastSyncedAt?: string | null } | null>(null);
+  const [showConfig, setShowConfig] = useState<boolean>(false);
 
 
   const handleExportBackup = async () => {
@@ -738,79 +741,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         )}
 
-        {/* Section 1: Cấu hình Web App URL & Token */}
-        <section className="report-breakdown-card" style={{ marginBottom: '20px' }}>
-          <h3 style={{ fontSize: '0.9375rem', fontWeight: 600, marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <KeyRound size={18} color="var(--color-brand-primary)" />
-            Cấu hình Kết nối Google Apps Script
-          </h3>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 500, marginBottom: '6px' }}>
-                URL Ứng dụng web (Web App URL)
-              </label>
-              <input
-                type="text"
-                className="input-field"
-                placeholder="https://script.google.com/macros/s/.../exec"
-                value={syncUrl}
-                onChange={(e) => setSyncUrl(e.target.value)}
-                style={{ width: '100%', fontSize: '0.8125rem' }}
-              />
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 500, marginBottom: '6px' }}>
-                Mã bí mật xác thực (Shared Secret Token)
-              </label>
-              <input
-                type="text"
-                className="input-field"
-                placeholder="Ví dụ: kentoprice123123"
-                value={syncToken}
-                onChange={(e) => setSyncToken(e.target.value)}
-                style={{ width: '100%', fontSize: '0.8125rem' }}
-              />
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px', marginTop: '4px', flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={handleSaveSyncConfig}
-                style={{ fontSize: '0.8125rem', padding: '8px 14px' }}
-              >
-                Lưu cấu hình
-              </button>
-
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={handleTestPing}
-                disabled={isSyncing}
-                style={{ fontSize: '0.8125rem', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '6px' }}
-              >
-                {isSyncing && syncActionType === 'ping' ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : (
-                  <RefreshCw size={16} />
-                )}
-                Kiểm tra kết nối (Ping)
-              </button>
-            </div>
-          </div>
-        </section>
-
-        {/* Section 2: Quản lý Bảng Tính & Đồng Bộ Dữ Liệu */}
+        {/* Section 1: Thao tác Đồng bộ Bảng tính */}
         <section className="report-breakdown-card" style={{ marginBottom: '20px' }}>
           <h3 style={{ fontSize: '0.9375rem', fontWeight: 600, marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <FileSpreadsheet size={18} color="var(--color-income)" />
-            Thao tác Đồng bộ Bảng tính
+            Thao tác Đồng bộ Google Sheets
           </h3>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {/* Action 1: Khởi tạo bảng tính */}
+            {/* Action 1: Kiểm tra kết nối */}
             <div
               style={{
                 display: 'flex',
@@ -823,7 +762,41 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               }}
             >
               <div>
-                <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>1. Khởi tạo 5 bảng tính</div>
+                <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>1. Kiểm tra kết nối (Ping)</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
+                  Kiểm tra trạng thái máy chủ Google Apps Script & đo độ trễ
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleTestPing}
+                disabled={isSyncing}
+                style={{ fontSize: '0.8125rem', padding: '6px 14px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                {isSyncing && syncActionType === 'ping' ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <RefreshCw size={14} />
+                )}
+                Kiểm tra
+              </button>
+            </div>
+
+            {/* Action 2: Khởi tạo bảng tính */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '12px 14px',
+                borderRadius: 'var(--radius-md)',
+                backgroundColor: 'var(--color-surface-elevated)',
+                border: '1px solid var(--color-border-subtle)',
+              }}
+            >
+              <div>
+                <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>2. Khởi tạo 5 bảng tính</div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
                   Tạo các tab Transactions, Categories, Funds, FundMonthlyConfigs, Sync_Meta
                 </div>
@@ -833,7 +806,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 className="btn btn-secondary"
                 onClick={handleInitSheets}
                 disabled={isSyncing}
-                style={{ fontSize: '0.8125rem', padding: '6px 12px', flexShrink: 0 }}
+                style={{ fontSize: '0.8125rem', padding: '6px 14px', flexShrink: 0 }}
               >
                 {isSyncing && syncActionType === 'init' ? (
                   <Loader2 size={14} className="animate-spin" />
@@ -843,7 +816,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </button>
             </div>
 
-            {/* Action 2: Đẩy toàn bộ dữ liệu (Push Snapshot) */}
+            {/* Action 3: Đẩy toàn bộ dữ liệu (Push Snapshot) */}
             <div
               style={{
                 display: 'flex',
@@ -856,7 +829,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               }}
             >
               <div>
-                <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>2. Đẩy dữ liệu lên Google Sheets (Push)</div>
+                <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>3. Đẩy dữ liệu lên Google Sheets (Push)</div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
                   Sao lưu toàn bộ giao dịch, danh mục, quỹ và hạn mức hiện có lên Cloud
                 </div>
@@ -866,7 +839,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 className="btn btn-primary"
                 onClick={handlePushSnapshot}
                 disabled={isSyncing}
-                style={{ fontSize: '0.8125rem', padding: '6px 12px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '6px' }}
+                style={{ fontSize: '0.8125rem', padding: '6px 14px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '6px' }}
               >
                 {isSyncing && syncActionType === 'push' ? (
                   <Loader2 size={14} className="animate-spin" />
@@ -877,7 +850,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </button>
             </div>
 
-            {/* Action 3: Xem thông tin bảng tính */}
+            {/* Action 4: Xem thông tin bảng tính */}
             <div
               style={{
                 display: 'flex',
@@ -890,7 +863,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               }}
             >
               <div>
-                <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>3. Kiểm tra số lượng bản ghi trên Cloud</div>
+                <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>4. Kiểm tra số lượng bản ghi trên Cloud</div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
                   {metaInfo?.counts
                     ? `${metaInfo.counts.transactions} giao dịch • ${metaInfo.counts.categories} danh mục • ${metaInfo.counts.funds} quỹ`
@@ -902,7 +875,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 className="btn btn-secondary"
                 onClick={handleGetMeta}
                 disabled={isSyncing}
-                style={{ fontSize: '0.8125rem', padding: '6px 12px', flexShrink: 0 }}
+                style={{ fontSize: '0.8125rem', padding: '6px 14px', flexShrink: 0 }}
               >
                 {isSyncing && syncActionType === 'meta' ? (
                   <Loader2 size={14} className="animate-spin" />
@@ -913,6 +886,90 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
           </div>
         </section>
+
+        {/* Nút Ẩn/Hiện Cấu hình nâng cao */}
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '18px' }}>
+          <button
+            type="button"
+            onClick={() => setShowConfig(!showConfig)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--color-text-secondary)',
+              fontSize: '0.8125rem',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              borderRadius: 'var(--radius-md)',
+              transition: 'color var(--transition-fast)',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--color-text-primary)')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--color-text-secondary)')}
+          >
+            <SlidersHorizontal size={14} />
+            <span>{showConfig ? 'Ẩn cấu hình kết nối Web App' : 'Cấu hình kết nối nâng cao (URL & Token)'}</span>
+            <ChevronDown
+              size={14}
+              style={{
+                transform: showConfig ? 'rotate(180deg)' : 'none',
+                transition: 'transform var(--transition-fast)',
+              }}
+            />
+          </button>
+        </div>
+
+        {/* Section 2: Cấu hình Web App URL & Token (Ẩn mặc định) */}
+        {showConfig && (
+          <section className="report-breakdown-card" style={{ marginBottom: '20px' }}>
+            <h3 style={{ fontSize: '0.9375rem', fontWeight: 600, marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <KeyRound size={18} color="var(--color-brand-primary)" />
+              Cấu hình Kết nối Google Apps Script
+            </h3>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 500, marginBottom: '6px' }}>
+                  URL Ứng dụng web (Web App URL)
+                </label>
+                <input
+                  type="text"
+                  className="input-field"
+                  placeholder="https://script.google.com/macros/s/.../exec"
+                  value={syncUrl}
+                  onChange={(e) => setSyncUrl(e.target.value)}
+                  style={{ width: '100%', fontSize: '0.8125rem' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 500, marginBottom: '6px' }}>
+                  Mã bí mật xác thực (Shared Secret Token)
+                </label>
+                <input
+                  type="text"
+                  className="input-field"
+                  placeholder="Ví dụ: kentoprice123123"
+                  value={syncToken}
+                  onChange={(e) => setSyncToken(e.target.value)}
+                  style={{ width: '100%', fontSize: '0.8125rem' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={handleSaveSyncConfig}
+                  style={{ fontSize: '0.8125rem', padding: '8px 14px' }}
+                >
+                  Lưu cấu hình
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* Section 3: Hướng dẫn kỹ thuật */}
         <section className="report-breakdown-card">
