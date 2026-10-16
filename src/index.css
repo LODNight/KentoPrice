@@ -171,7 +171,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  padding-bottom: 90px; /* Space for mobile nav */
+  padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px)); /* Space for mobile nav */
 }
 
 @media (min-width: 768px) {
@@ -1675,7 +1675,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   bottom: 0;
   left: 0;
   right: 0;
-  height: 64px;
+  height: calc(64px + env(safe-area-inset-bottom, 0px));
   padding-bottom: env(safe-area-inset-bottom, 0px);
   z-index: 50;
   display: block;

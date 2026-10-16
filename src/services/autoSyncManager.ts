@@ -5,6 +5,7 @@ import {
   getGoogleSheetsSyncMeta,
 } from './googleSheetsSync';
 import { generateBackupData, restoreSnapshotToDatabase } from './backup';
+import { broadcastSyncRestored } from './crossTabSync';
 
 export type AutoSyncStatus = 'idle' | 'syncing' | 'synced' | 'error' | 'disabled';
 
@@ -58,6 +59,7 @@ export function saveLastCloudSyncedAt(timestamp: string): void {
 
 export class AutoSyncManager {
   private debounceMs: number;
+  private metaThrottleMs: number;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private isSyncing = false;
   private isPulling = false;
@@ -71,12 +73,23 @@ export class AutoSyncManager {
   private listeners: Set<(state: AutoSyncState) => void> = new Set();
   private dataRestoredListeners: Set<() => void> = new Set();
 
-  constructor(debounceMs = 3000) {
+  constructor(debounceMs = 3000, metaThrottleMs = 2500) {
     this.debounceMs = debounceMs;
+    this.metaThrottleMs = metaThrottleMs;
     this.isAutoSyncEnabled = getAutoSyncEnabled();
     this.lastPulledAt = getLastPulledAt();
     this.lastCloudSyncedAt = getLastCloudSyncedAt();
+
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      window.addEventListener('online', this.handleOnline);
+    }
   }
+
+  private handleOnline = (): void => {
+    if (this.isAutoSyncEnabled) {
+      this.triggerAutoSync();
+    }
+  };
 
   public getState(): AutoSyncState {
     return {
@@ -134,6 +147,11 @@ export class AutoSyncManager {
     if (!config.webAppUrl || !config.token) {
       this.status = 'disabled';
       this.notify();
+      return false;
+    }
+
+    // If offline, do not attempt network request or display error badge
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       return false;
     }
 
@@ -213,10 +231,9 @@ export class AutoSyncManager {
 
     const now = Date.now();
 
-    // 1. Throttle: avoid spamming get_meta within 2.5 seconds (prevents focus + visibilitychange rapid double-firing)
-    const metaThrottleMs = 2500;
+    // 1. Throttle: avoid spamming get_meta within metaThrottleMs (prevents focus + visibilitychange rapid double-firing)
     const withinMetaThrottle =
-      !options?.force && this.lastPulledAt && now - this.lastPulledAt.getTime() < metaThrottleMs;
+      !options?.force && this.lastPulledAt && now - this.lastPulledAt.getTime() < this.metaThrottleMs;
 
     if (withinMetaThrottle) {
       // Too soon since last pull check — skip to avoid duplicate concurrent calls
@@ -279,6 +296,7 @@ export class AutoSyncManager {
 
       // 5. Notify all components to reload from IndexedDB
       this.notifyDataRestored();
+      broadcastSyncRestored();
 
       return { updated: true, counts: restoreResult.counts };
     } catch (err: unknown) {
@@ -343,6 +361,9 @@ export class AutoSyncManager {
     if (this.postPullGuardTimer) {
       clearTimeout(this.postPullGuardTimer);
       this.postPullGuardTimer = null;
+    }
+    if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+      window.removeEventListener('online', this.handleOnline);
     }
     this.isPulling = false;
     this.listeners.clear();

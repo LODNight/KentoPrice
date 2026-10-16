@@ -3,6 +3,7 @@ import type { ITransactionRepository, ICategoryRepository, IFundRepository } fro
 import { transactionRepository, categoryRepository, fundRepository } from './index';
 import { openDatabase, STORES } from '../infrastructure/indexedDB/db';
 import { DEFAULT_CATEGORIES } from '../infrastructure/indexedDB/initialCategories';
+import { normalizeDateString } from '../utils/date';
 
 export interface BackupV2Payload {
   $schema: string;
@@ -145,24 +146,36 @@ export async function restoreSnapshotToDatabase(
 
     // 1. Categories
     if (Array.isArray(data.categories) && data.categories.length > 0) {
-      data.categories.forEach((cat) => catStore.put(cat));
+      data.categories
+        .filter((cat) => cat && typeof cat.id === 'string' && cat.id.trim() !== '')
+        .forEach((cat) => catStore.put(cat));
     } else {
       DEFAULT_CATEGORIES.forEach((cat) => catStore.put(cat));
     }
 
     // 2. Funds
     if (Array.isArray(data.funds)) {
-      data.funds.forEach((fund) => fundStore.put(fund));
+      data.funds
+        .filter((fund) => fund && typeof fund.id === 'string' && fund.id.trim() !== '')
+        .forEach((fund) => fundStore.put(fund));
     }
 
     // 3. FundMonthlyConfigs
     if (Array.isArray(data.fundMonthlyConfigs)) {
-      data.fundMonthlyConfigs.forEach((cfg) => configStore.put(cfg));
+      data.fundMonthlyConfigs
+        .filter((cfg) => cfg && typeof cfg.id === 'string' && cfg.id.trim() !== '')
+        .forEach((cfg) => configStore.put(cfg));
     }
 
     // 4. Transactions
     if (Array.isArray(data.transactions)) {
-      data.transactions.forEach((txn) => txnStore.put(txn));
+      data.transactions
+        .filter((txn) => txn && typeof txn.id === 'string' && txn.id.trim() !== '')
+        .map((txn) => ({
+          ...txn,
+          transactionDate: normalizeDateString(txn.transactionDate),
+        }))
+        .forEach((txn) => txnStore.put(txn));
     }
 
     metaStore.put({ key: 'lastRestoredAt', value: new Date().toISOString() });
@@ -181,5 +194,53 @@ export async function restoreSnapshotToDatabase(
     tx.onerror = () => reject(tx.error);
     tx.onabort = () => reject(new Error('Khôi phục cơ sở dữ liệu thất bại (Transaction Aborted).'));
   });
+}
+
+/**
+ * Parses and validates an uploaded backup JSON string.
+ * Supports backward compatibility for both Schema v1 (without Funds) and Schema v2 (with Funds).
+ */
+export function parseAndValidateBackupJson(jsonString: string): {
+  data: BackupV2Payload['data'];
+  version: number;
+} {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonString);
+  } catch {
+    throw new Error('Tệp không đúng định dạng JSON hợp lệ.');
+  }
+
+  if (!parsed || typeof parsed !== 'object') {
+    throw new Error('Cấu trúc tệp sao lưu không hợp lệ.');
+  }
+
+  const obj = parsed as Record<string, unknown>;
+  const rawData =
+    obj.data && typeof obj.data === 'object' ? (obj.data as Record<string, unknown>) : obj;
+
+  const version =
+    typeof obj.version === 'number' ? obj.version : Array.isArray(rawData.funds) ? 2 : 1;
+
+  const transactions = Array.isArray(rawData.transactions) ? rawData.transactions : [];
+  const categories = Array.isArray(rawData.categories) ? rawData.categories : [];
+  const funds = Array.isArray(rawData.funds) ? rawData.funds : [];
+  const fundMonthlyConfigs = Array.isArray(rawData.fundMonthlyConfigs)
+    ? rawData.fundMonthlyConfigs
+    : [];
+
+  if (!Array.isArray(rawData.transactions) && !Array.isArray(rawData.categories)) {
+    throw new Error('Tệp sao lưu không chứa dữ liệu giao dịch hoặc danh mục của QL_ThuChi.');
+  }
+
+  return {
+    version,
+    data: {
+      transactions: transactions as Transaction[],
+      categories: categories as Category[],
+      funds: funds as Fund[],
+      fundMonthlyConfigs: fundMonthlyConfigs as FundMonthlyConfig[],
+    },
+  };
 }
 

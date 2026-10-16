@@ -66,6 +66,8 @@ describe('currency utilities', () => {
       expect(numberToVietnameseWords(120300)).toBe('Một trăm hai mươi nghìn ba trăm đồng');
       expect(numberToVietnameseWords(25000000)).toBe('Hai mươi lăm triệu đồng');
       expect(numberToVietnameseWords(500000)).toBe('Năm trăm nghìn đồng');
+      expect(numberToVietnameseWords(1000000000)).toBe('Một tỷ đồng');
+      expect(numberToVietnameseWords(1000000000000)).toBe('Một nghìn tỷ đồng');
     });
 
     it('returns empty string for non-positive or invalid amounts', () => {

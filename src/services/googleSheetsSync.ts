@@ -128,6 +128,12 @@ async function sendGasRequest<T>(
     throw new Error('Chưa cấu hình URL của Google Apps Script Web App.');
   }
 
+  if (cleanUrl.includes('docs.google.com/spreadsheets')) {
+    throw new Error(
+      'URL bạn nhập là link Google Spreadsheet (Trang tính), không phải URL của Google Apps Script Web App! Vui lòng vào Tiện ích mở rộng -> Apps Script -> Triển khai (Deploy) -> Tùy chọn triển khai mới (Web App) để lấy URL /exec.'
+    );
+  }
+
   const response = await fetch(cleanUrl, {
     method: 'POST',
     redirect: 'follow',
@@ -141,7 +147,15 @@ async function sendGasRequest<T>(
     throw new Error(`HTTP Error ${response.status}: ${response.statusText}`);
   }
 
-  const result = (await response.json()) as T & { ok?: boolean; message?: string; code?: string };
+  let result: T & { ok?: boolean; message?: string; code?: string };
+  try {
+    result = (await response.json()) as T & { ok?: boolean; message?: string; code?: string };
+  } catch {
+    throw new Error(
+      'Google Apps Script trả về nội dung HTML thay vì JSON. Nguyên nhân thường do quyền truy cập: Khi Deploy Web App, mục "Ai có quyền truy cập" (Who has access) bắt buộc phải chọn "Bất kỳ ai" (Anyone).'
+    );
+  }
+
   if (result.ok === false) {
     const errCode = result.code ? `[${result.code}] ` : '';
     throw new Error(`${errCode}${result.message || 'Lỗi thao tác trên Google Apps Script'}`);

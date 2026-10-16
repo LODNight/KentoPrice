@@ -105,7 +105,7 @@ export function numberToVietnameseWords(amount: number): string {
   if (amount > 1_000_000_000_000) return 'Số tiền quá lớn';
 
   const digits = ['không', 'một', 'hai', 'ba', 'bốn', 'năm', 'sáu', 'bảy', 'tám', 'chín'];
-  const units = ['', 'nghìn', 'triệu', 'tỷ'];
+  const units = ['', 'nghìn', 'triệu', 'tỷ', 'nghìn tỷ'];
 
   function readGroupOfThree(n: number, isFirst: boolean): string {
     const tram = Math.floor(n / 100);

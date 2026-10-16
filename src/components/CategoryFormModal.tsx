@@ -3,7 +3,7 @@ import type { Category, CategoryType } from '../types';
 import { IconRenderer } from './IconRenderer';
 import { X, Check, AlertTriangle, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 
-export const CATEGORY_AVAILABLE_ICONS = [
+const CATEGORY_AVAILABLE_ICONS = [
   'utensils',
   'coffee',
   'shoppingbag',
@@ -44,7 +44,7 @@ export const CATEGORY_AVAILABLE_ICONS = [
   'smile',
 ];
 
-export const CATEGORY_AVAILABLE_COLORS = [
+const CATEGORY_AVAILABLE_COLORS = [
   '#EF4444', // Red
   '#F97316', // Orange
   '#F59E0B', // Amber

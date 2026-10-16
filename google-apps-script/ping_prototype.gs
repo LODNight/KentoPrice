@@ -1,7 +1,12 @@
 /**
- * Google Apps Script Prototype — Action "ping"
+ * Google Apps Script Prototype — Action "ping" (Diagnostic / Archival)
  *
- * Mục đích:
+ * LƯU Ý HỆ THỐNG:
+ * Tập lệnh chính thức (Production) cho toàn bộ tính năng đồng bộ 2 chiều (Push/Pull Snapshot,
+ * Quản lý Quỹ, Danh mục, Giao dịch) là `sync_backend.gs`.
+ * Tệp này được lưu trữ phục vụ việc test chẩn đoán ping độc lập.
+ *
+ * Mục đích ban đầu:
  * Kiểm chứng hạ tầng kết nối Web App, xử lý 302 Redirect của Google, CORS,
  * kiểm tra Shared Secret Token và đo đạc độ trễ (latency) trước khi chuyển dữ liệu.
  *

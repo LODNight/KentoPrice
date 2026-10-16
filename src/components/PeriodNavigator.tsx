@@ -12,9 +12,9 @@ export const PeriodNavigator: React.FC<PeriodNavigatorProps> = ({
   period,
   onPeriodChange,
 }) => {
-  const today = new Date();
-  const currentYear = today.getFullYear();
-  const currentMonth = today.getMonth() + 1;
+  const [currentDate] = React.useState(() => new Date());
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth() + 1;
   const isCurrentMonth = period.year === currentYear && period.month === currentMonth;
 
   const handlePrevMonth = () => {

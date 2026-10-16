@@ -38,34 +38,74 @@ export const THEME_OPTIONS: ThemeConfig[] = [
   },
 ];
 
-const THEME_STORAGE_KEY = 'qlthuchi_app_theme';
+export const THEME_STORAGE_KEY = 'qlthuchi_app_theme';
 
-export function useTheme() {
-  const [theme, setThemeState] = useState<AppTheme>(() => {
-    try {
+export function getSavedTheme(): AppTheme {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
       const saved = localStorage.getItem(THEME_STORAGE_KEY) as AppTheme;
       if (saved && (saved === 'dark' || saved === 'butter-green' || saved === 'pine-butter')) {
         return saved;
       }
-    } catch {
-      // Fallback to dark
     }
-    return 'dark';
-  });
+  } catch {
+    // Fallback to dark
+  }
+  return 'dark';
+}
+
+export function useTheme() {
+  const [theme, setThemeState] = useState<AppTheme>(getSavedTheme);
 
   const applyTheme = useCallback((newTheme: AppTheme) => {
     setThemeState(newTheme);
-    document.documentElement.setAttribute('data-theme', newTheme);
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-theme', newTheme);
+    }
     try {
-      localStorage.setItem(THEME_STORAGE_KEY, newTheme);
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.setItem(THEME_STORAGE_KEY, newTheme);
+        window.dispatchEvent(new CustomEvent('qlthuchi_theme_change', { detail: newTheme }));
+      }
     } catch {
       // Ignore storage errors
     }
   }, []);
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-theme', theme);
+    }
   }, [theme]);
+
+  // Synchronize theme changes across tabs and hook instances
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === THEME_STORAGE_KEY && e.newValue) {
+        const newTheme = e.newValue as AppTheme;
+        if (newTheme === 'dark' || newTheme === 'butter-green' || newTheme === 'pine-butter') {
+          setThemeState(newTheme);
+          document.documentElement.setAttribute('data-theme', newTheme);
+        }
+      }
+    };
+
+    const handleCustomChange = (e: Event) => {
+      const customEvent = e as CustomEvent<AppTheme>;
+      if (customEvent.detail) {
+        setThemeState(customEvent.detail);
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('qlthuchi_theme_change', handleCustomChange);
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('qlthuchi_theme_change', handleCustomChange);
+    };
+  }, []);
 
   return {
     theme,

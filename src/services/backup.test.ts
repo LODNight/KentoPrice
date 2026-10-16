@@ -372,5 +372,65 @@ describe('Backup JSON v2 Service', () => {
       }).not.toThrow();
     });
   });
+
+  describe('parseAndValidateBackupJson', () => {
+    it('should parse valid Schema v2 backup JSON', async () => {
+      const { parseAndValidateBackupJson } = await import('./backup');
+      const validV2 = JSON.stringify({
+        $schema: 'https://qlthuchi.local/schemas/v2/backup.json',
+        app: 'QL_ThuChi',
+        version: 2,
+        exportedAt: '2026-10-16T00:00:00.000Z',
+        data: {
+          transactions: [{ id: 'txn_1', type: 'expense', amount: 50000 }],
+          categories: [{ id: 'cat_1', name: 'Ăn uống', type: 'expense' }],
+          funds: [{ id: 'fund_1', name: 'Quỹ Ăn' }],
+          fundMonthlyConfigs: [{ id: 'cfg_1', fundId: 'fund_1', yearMonth: '2026-10' }],
+        },
+      });
+
+      const res = parseAndValidateBackupJson(validV2);
+      expect(res.version).toBe(2);
+      expect(res.data.transactions).toHaveLength(1);
+      expect(res.data.categories).toHaveLength(1);
+      expect(res.data.funds).toHaveLength(1);
+      expect(res.data.fundMonthlyConfigs).toHaveLength(1);
+    });
+
+    it('should successfully parse Schema v1 backup without funds and provide default empty arrays', async () => {
+      const { parseAndValidateBackupJson } = await import('./backup');
+      const v1Backup = JSON.stringify({
+        $schema: 'https://qlthuchi.local/schemas/v1/backup.json',
+        app: 'QL_ThuChi',
+        version: 1,
+        exportedAt: '2026-09-01T00:00:00.000Z',
+        data: {
+          transactions: [{ id: 'txn_legacy_1', type: 'income', amount: 1000000 }],
+          categories: [{ id: 'cat_legacy_1', name: 'Lương', type: 'income' }],
+        },
+      });
+
+      const res = parseAndValidateBackupJson(v1Backup);
+      expect(res.version).toBe(1);
+      expect(res.data.transactions).toHaveLength(1);
+      expect(res.data.categories).toHaveLength(1);
+      expect(res.data.funds).toEqual([]);
+      expect(res.data.fundMonthlyConfigs).toEqual([]);
+    });
+
+    it('should throw descriptive error for invalid JSON string', async () => {
+      const { parseAndValidateBackupJson } = await import('./backup');
+      expect(() => parseAndValidateBackupJson('INVALID_JSON{')).toThrow(
+        'Tệp không đúng định dạng JSON hợp lệ.'
+      );
+    });
+
+    it('should throw descriptive error if payload is unrelated to QL_ThuChi', async () => {
+      const { parseAndValidateBackupJson } = await import('./backup');
+      expect(() => parseAndValidateBackupJson(JSON.stringify({ someKey: 'unrelated' }))).toThrow(
+        'Tệp sao lưu không chứa dữ liệu giao dịch hoặc danh mục của QL_ThuChi.'
+      );
+    });
+  });
 });
 

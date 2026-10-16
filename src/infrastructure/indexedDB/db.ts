@@ -110,6 +110,10 @@ export function openDatabase(): Promise<IDBDatabase> {
         dbInstance = null;
       };
 
+      db.onclose = () => {
+        dbInstance = null;
+      };
+
       try {
         // Seed default categories if newly initialized
         await seedCategoriesIfEmpty(db);

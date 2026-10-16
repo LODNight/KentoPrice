@@ -5,6 +5,7 @@ import { formatNumberWithDots, numberToVietnameseWords } from '../utils/currency
 import { getLocalTodayDateString } from '../utils/date';
 import { X, Check, ArrowDownLeft, ArrowUpRight, Briefcase, Plus, Loader2 } from 'lucide-react';
 import { CategoryFormModal } from './CategoryFormModal';
+import { CascadeWarningModal, type CascadeWarningModalProps } from './CascadeWarningModal';
 import { submitTransactionForm } from './transactionSubmission';
 
 interface TransactionEntryModalProps {
@@ -51,6 +52,8 @@ export const TransactionEntryModal: React.FC<TransactionEntryModalProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [isQuickAddCatOpen, setIsQuickAddCatOpen] = useState<boolean>(false);
+  const [isCascadeWarningOpen, setIsCascadeWarningOpen] = useState<boolean>(false);
+  const [cascadeWarningConfig, setCascadeWarningConfig] = useState<Omit<CascadeWarningModalProps, 'isOpen' | 'onConfirm' | 'onCancel'> | null>(null);
 
   const amountInputRef = useRef<HTMLInputElement>(null);
 
@@ -90,6 +93,18 @@ export const TransactionEntryModal: React.FC<TransactionEntryModalProps> = ({
     }, 100);
     return () => clearTimeout(timer);
   }, [isOpen, initialType, editingTransaction, categories]);
+
+  // Keyboard accessibility: Escape key to close modal
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isSubmitting && !isCascadeWarningOpen && !isQuickAddCatOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, isSubmitting, isCascadeWarningOpen, isQuickAddCatOpen, onClose]);
 
   // When type changes, switch active category if current category does not match type
   const handleTypeChange = (newType: TransactionType) => {
@@ -141,8 +156,7 @@ export const TransactionEntryModal: React.FC<TransactionEntryModalProps> = ({
     }
   };
 
-  const handleSubmit = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
+  const executeSubmit = async () => {
     await submitTransactionForm({
       amountStr,
       categoryId,
@@ -156,6 +170,46 @@ export const TransactionEntryModal: React.FC<TransactionEntryModalProps> = ({
       onSave,
       onClose,
     });
+  };
+
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+
+    // Check if modifying a historical transaction with Fund that triggers cascade warning (PDR-019 Wireframe 8 & 9)
+    if (editingTransaction) {
+      const targetFundId = fundId || editingTransaction.fundId;
+      if (targetFundId) {
+        const currentYm = getLocalTodayDateString().slice(0, 7);
+        const oldYm = editingTransaction.transactionDate.slice(0, 7);
+        const newYm = transactionDate.slice(0, 7);
+        const isHistoricalMonth = oldYm < currentYm;
+        const isMonthShift = oldYm !== newYm;
+        const parsedAmount = parseInt(amountStr.replace(/\D/g, ''), 10) || 0;
+        const isAmountChanged = parsedAmount !== editingTransaction.amount;
+
+        // Triggers warning if:
+        // 1) Shifting transaction date across different months (Wireframe 9)
+        // 2) Or modifying amount of a transaction in a past/closed month (Wireframe 8)
+        if (isMonthShift || (isHistoricalMonth && isAmountChanged)) {
+          const matchedFund = allFunds.find((f) => f.id === targetFundId) || activeFunds.find((f) => f.id === targetFundId);
+          const matchedCat = categories.find((c) => c.id === categoryId);
+          setCascadeWarningConfig({
+            isMonthShift,
+            fundName: matchedFund ? matchedFund.name : 'Quỹ',
+            transactionNote: note.trim() || undefined,
+            categoryName: matchedCat?.name,
+            oldAmount: editingTransaction.amount,
+            newAmount: parsedAmount,
+            oldDate: editingTransaction.transactionDate,
+            newDate: transactionDate,
+          });
+          setIsCascadeWarningOpen(true);
+          return;
+        }
+      }
+    }
+
+    await executeSubmit();
   };
 
   if (!isOpen) return null;
@@ -518,6 +572,28 @@ export const TransactionEntryModal: React.FC<TransactionEntryModalProps> = ({
             }
           }}
           onClose={() => setIsQuickAddCatOpen(false)}
+        />
+      )}
+
+      {/* Cascade Recalculation Warning Modal (Wireframe 8 & 9) */}
+      {isCascadeWarningOpen && cascadeWarningConfig && (
+        <CascadeWarningModal
+          isOpen={isCascadeWarningOpen}
+          isMonthShift={cascadeWarningConfig.isMonthShift}
+          fundName={cascadeWarningConfig.fundName}
+          transactionNote={cascadeWarningConfig.transactionNote}
+          categoryName={cascadeWarningConfig.categoryName}
+          oldAmount={cascadeWarningConfig.oldAmount}
+          newAmount={cascadeWarningConfig.newAmount}
+          oldDate={cascadeWarningConfig.oldDate}
+          newDate={cascadeWarningConfig.newDate}
+          onConfirm={async () => {
+            setIsCascadeWarningOpen(false);
+            await executeSubmit();
+          }}
+          onCancel={() => {
+            setIsCascadeWarningOpen(false);
+          }}
         />
       )}
     </div>

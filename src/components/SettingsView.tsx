@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import type { Category } from '../types';
 import { useTheme, THEME_OPTIONS } from '../hooks/useTheme';
 import {
@@ -17,6 +17,7 @@ import {
   HardDrive,
   Lock,
   Download,
+  Upload,
   Loader2,
   Cloud,
   FileSpreadsheet,
@@ -26,7 +27,13 @@ import {
   ChevronDown,
   SlidersHorizontal,
 } from 'lucide-react';
-import { exportAndDownloadBackup, generateBackupData } from '../services/backup';
+import {
+  exportAndDownloadBackup,
+  generateBackupData,
+  parseAndValidateBackupJson,
+  restoreSnapshotToDatabase,
+} from '../services/backup';
+import { broadcastSyncRestored } from '../services/crossTabSync';
 import {
   getSyncConfig,
   saveSyncConfig,
@@ -46,6 +53,14 @@ interface SettingsViewProps {
   onSeedSampleData?: () => void;
   onResetData?: () => void;
   onExportBackup?: () => Promise<{ filename: string } | void>;
+  onRestoreBackup?: (file: File) => Promise<{
+    counts: {
+      transactions: number;
+      categories: number;
+      funds: number;
+      fundMonthlyConfigs: number;
+    };
+  }>;
 }
 
 type SettingsSubView = 'theme' | 'data' | 'currency' | 'about' | 'google-sheets' | null;
@@ -58,20 +73,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onSeedSampleData,
   onResetData,
   onExportBackup,
+  onRestoreBackup,
 }) => {
   const { theme, setTheme } = useTheme();
   const [activeSubView, setActiveSubView] = useState<SettingsSubView>(null);
   const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [isRestoring, setIsRestoring] = useState<boolean>(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [backupMessage, setBackupMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Google Sheets Sync States
   const [syncUrl, setSyncUrl] = useState<string>(() => {
     const cfg = getSyncConfig();
-    return cfg.webAppUrl || 'https://script.google.com/macros/s/AKfycbxBWs92JIiRcZvs0yW2BIpjCxwbzP5gnjMLkKnyzt3ICnH8rEBJ58IvSQn_QCdeTSRlIw/exec';
+    return cfg.webAppUrl || '';
   });
   const [syncToken, setSyncToken] = useState<string>(() => {
     const cfg = getSyncConfig();
-    return cfg.token || 'kentoprice123123';
+    return cfg.token || '';
   });
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [syncActionType, setSyncActionType] = useState<'ping' | 'init' | 'push' | 'pull' | 'meta' | null>(null);
@@ -120,6 +138,47 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       });
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (
+      !window.confirm(
+        'Khôi phục từ tệp sao lưu sẽ thay thế dữ liệu giao dịch và quỹ hiện tại trên thiết bị này. Bạn có chắc chắn muốn tiếp tục?'
+      )
+    ) {
+      e.target.value = '';
+      return;
+    }
+
+    setIsRestoring(true);
+    setBackupMessage(null);
+    try {
+      if (onRestoreBackup) {
+        const res = await onRestoreBackup(file);
+        setBackupMessage({
+          type: 'success',
+          text: `Khôi phục thành công: ${res.counts.transactions} giao dịch, ${res.counts.categories} danh mục, ${res.counts.funds} quỹ.`,
+        });
+      } else {
+        const text = await file.text();
+        const { data, version } = parseAndValidateBackupJson(text);
+        const res = await restoreSnapshotToDatabase(data);
+        broadcastSyncRestored();
+        setBackupMessage({
+          type: 'success',
+          text: `Khôi phục thành công (Schema v${version}): ${res.counts.transactions} giao dịch, ${res.counts.categories} danh mục, ${res.counts.funds} quỹ.`,
+        });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Khôi phục file sao lưu thất bại.';
+      setBackupMessage({ type: 'error', text: msg });
+    } finally {
+      setIsRestoring(false);
+      e.target.value = '';
     }
   };
 
@@ -483,32 +542,67 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
           )}
 
-          <button
-            type="button"
-            className="btn btn-secondary"
-            style={{
-              width: '100%',
-              justifyContent: 'center',
-              fontSize: '0.875rem',
-              padding: '12px',
-              borderColor: 'var(--color-brand-primary)',
-              color: 'var(--color-brand-primary)',
-            }}
-            onClick={handleExportBackup}
-            disabled={isExporting}
-          >
-            {isExporting ? (
-              <>
-                <Loader2 size={16} className="animate-spin" />
-                <span>Đang xuất dữ liệu sao lưu...</span>
-              </>
-            ) : (
-              <>
-                <Download size={16} />
-                <span>Xuất file sao lưu (JSON v2)</span>
-              </>
-            )}
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{
+                width: '100%',
+                justifyContent: 'center',
+                fontSize: '0.875rem',
+                padding: '12px',
+                borderColor: 'var(--color-brand-primary)',
+                color: 'var(--color-brand-primary)',
+              }}
+              onClick={handleExportBackup}
+              disabled={isExporting}
+            >
+              {isExporting ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>Đang xuất dữ liệu sao lưu...</span>
+                </>
+              ) : (
+                <>
+                  <Download size={16} />
+                  <span>Xuất file sao lưu (JSON v2)</span>
+                </>
+              )}
+            </button>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json"
+              style={{ display: 'none' }}
+              onChange={handleFileChange}
+            />
+
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{
+                width: '100%',
+                justifyContent: 'center',
+                fontSize: '0.875rem',
+                padding: '12px',
+              }}
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isRestoring}
+            >
+              {isRestoring ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>Đang khôi phục dữ liệu...</span>
+                </>
+              ) : (
+                <>
+                  <Upload size={16} />
+                  <span>Khôi phục từ file sao lưu (JSON)</span>
+                </>
+              )}
+            </button>
+          </div>
         </section>
 
         {/* Action Tools */}

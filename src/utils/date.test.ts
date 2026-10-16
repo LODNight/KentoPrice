@@ -6,6 +6,7 @@ import {
   formatDateVN,
   formatMonthYear,
   getYearMonthSequence,
+  normalizeDateString,
 } from './date';
 
 describe('date utilities', () => {
@@ -37,6 +38,43 @@ describe('date utilities', () => {
 
   it('formatMonthYear formats month year correctly', () => {
     expect(formatMonthYear(2026, 10)).toBe('Tháng 10/2026');
+  });
+
+  describe('normalizeDateString', () => {
+    it('handles standard YYYY-MM-DD untouched', () => {
+      expect(normalizeDateString('2026-10-14')).toBe('2026-10-14');
+    });
+
+    it('extracts date from ISO 8601 string', () => {
+      expect(normalizeDateString('2026-10-14T14:28:17.384Z')).toBe('2026-10-14');
+    });
+
+    it('normalizes English date string with Vietnam timezone tag', () => {
+      expect(normalizeDateString('Wed Oct 14 2026 00:00:00 GMT+0700 (Giờ Đông Dương)')).toBe('2026-10-14');
+      expect(normalizeDateString('Wed Sep 30 2026 00:00:00 GMT+0700 (Giờ Đông Dương)')).toBe('2026-09-30');
+      expect(normalizeDateString('Fri Oct 09 2026 00:00:00 GMT+0700 (Giờ Đông Dương)')).toBe('2026-10-09');
+    });
+
+    it('normalizes English date string with Indochina Time tag', () => {
+      expect(normalizeDateString('Wed Oct 14 2026 00:00:00 GMT+0700 (Indochina Time)')).toBe('2026-10-14');
+    });
+
+    it('normalizes DD/MM/YYYY and DD-MM-YYYY formats', () => {
+      expect(normalizeDateString('14/10/2026')).toBe('2026-10-14');
+      expect(normalizeDateString('9/10/2026')).toBe('2026-10-09');
+      expect(normalizeDateString('14-10-2026')).toBe('2026-10-14');
+    });
+
+    it('normalizes Date object without timezone shift', () => {
+      const d = new Date(2026, 9, 14); // Oct 14, 2026 local
+      expect(normalizeDateString(d)).toBe('2026-10-14');
+    });
+
+    it('returns empty string for null/undefined/empty', () => {
+      expect(normalizeDateString('')).toBe('');
+      expect(normalizeDateString(null)).toBe('');
+      expect(normalizeDateString(undefined)).toBe('');
+    });
   });
 
   describe('getYearMonthSequence', () => {

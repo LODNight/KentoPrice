@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import type { Transaction, PeriodFilter, TransactionType, BudgetMode } from './types';
 import { calculateSummary } from './utils/calculator';
 import { getMonthDateRange } from './utils/date';
@@ -6,6 +6,12 @@ import { useCategories } from './hooks/useCategories';
 import { useTransactions } from './hooks/useTransactions';
 import { useFunds } from './hooks/useFunds';
 import { useAutoSync, autoSyncManager } from './hooks/useAutoSync';
+import {
+  broadcastLocalMutation,
+  broadcastSyncRestored,
+  subscribeCrossTabMutations,
+} from './services/crossTabSync';
+import { parseAndValidateBackupJson, restoreSnapshotToDatabase } from './services/backup';
 import { Header } from './components/Header';
 import { DashboardView } from './components/DashboardView';
 import { TransactionListView } from './components/TransactionListView';
@@ -19,8 +25,12 @@ import { CategoryManagementModal } from './components/CategoryManagementModal';
 import { PeriodNavigator } from './components/PeriodNavigator';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 import { MOCK_TRANSACTIONS } from './data/mockData';
+import { useTheme } from './hooks/useTheme';
 
 export function App() {
+  // Global App Theme: ensures custom theme persists and applies immediately on root mount and across tabs
+  useTheme();
+
   // Current active period (defaults to current calendar month)
   const [period, setPeriod] = useState<PeriodFilter>(() => {
     const now = new Date();
@@ -115,6 +125,16 @@ export function App() {
     return unsubscribe;
   }, [reloadCategories, reload, reloadFunds, setPeriod]);
 
+  // Listen for mutations from other tabs on the same browser (Cross-Tab Concurrency)
+  useEffect(() => {
+    const unsubscribe = subscribeCrossTabMutations(() => {
+      reload();
+      reloadCategories();
+      reloadFunds();
+    });
+    return unsubscribe;
+  }, [reload, reloadCategories, reloadFunds]);
+
 
   // Smart background pull on app mount (respects 2-minute cooldown and metadata check)
   useEffect(() => {
@@ -155,6 +175,7 @@ export function App() {
   const handleCreateCategory = useCallback(
     async (data: Parameters<typeof createCategory>[0]) => {
       const res = await createCategory(data);
+      broadcastLocalMutation('category', 'create');
       triggerAutoSync();
       return res;
     },
@@ -164,6 +185,7 @@ export function App() {
   const handleUpdateCategory = useCallback(
     async (cat: Parameters<typeof updateCategory>[0]) => {
       await updateCategory(cat);
+      broadcastLocalMutation('category', 'update');
       triggerAutoSync();
     },
     [updateCategory, triggerAutoSync]
@@ -172,6 +194,7 @@ export function App() {
   const handleArchiveCategory = useCallback(
     async (id: string) => {
       await archiveCategory(id);
+      broadcastLocalMutation('category', 'archive');
       triggerAutoSync();
     },
     [archiveCategory, triggerAutoSync]
@@ -180,6 +203,7 @@ export function App() {
   const handleRestoreCategory = useCallback(
     async (id: string) => {
       await restoreCategory(id);
+      broadcastLocalMutation('category', 'restore');
       triggerAutoSync();
     },
     [restoreCategory, triggerAutoSync]
@@ -188,6 +212,7 @@ export function App() {
   const handleDeleteCategory = useCallback(
     async (id: string) => {
       await deleteCategory(id);
+      broadcastLocalMutation('category', 'delete');
       triggerAutoSync();
     },
     [deleteCategory, triggerAutoSync]
@@ -197,6 +222,7 @@ export function App() {
   const handleCreateFund = useCallback(
     async (data: Parameters<typeof createFund>[0]) => {
       const res = await createFund(data);
+      broadcastLocalMutation('fund', 'create');
       triggerAutoSync();
       return res;
     },
@@ -206,14 +232,16 @@ export function App() {
   const handleUpdateFund = useCallback(
     async (data: Parameters<typeof updateFund>[0]) => {
       await updateFund(data);
+      broadcastLocalMutation('fund', 'update');
       triggerAutoSync();
     },
     [updateFund, triggerAutoSync]
   );
 
   const handleUpdateMonthConfig = useCallback(
-    async (fundId: string, ym: string, budget: number, mode?: BudgetMode) => {
-      await updateMonthConfig(fundId, ym, budget, mode);
+    async (fundId: string, budget: number, mode: BudgetMode) => {
+      await updateMonthConfig(fundId, budget, mode);
+      broadcastLocalMutation('fund', 'updateMonthConfig');
       triggerAutoSync();
     },
     [updateMonthConfig, triggerAutoSync]
@@ -222,6 +250,7 @@ export function App() {
   const handleArchiveFund = useCallback(
     async (id: string) => {
       await archiveFund(id);
+      broadcastLocalMutation('fund', 'archive');
       triggerAutoSync();
     },
     [archiveFund, triggerAutoSync]
@@ -230,6 +259,7 @@ export function App() {
   const handleRestoreFund = useCallback(
     async (id: string) => {
       await restoreFund(id);
+      broadcastLocalMutation('fund', 'restore');
       triggerAutoSync();
     },
     [restoreFund, triggerAutoSync]
@@ -269,9 +299,11 @@ export function App() {
     if (deleteModal.txnId) {
       await deleteTransaction(deleteModal.txnId);
       setDeleteModal({ isOpen: false, txnId: null });
+      await reloadFunds();
+      broadcastLocalMutation('transaction', 'delete');
       triggerAutoSync();
     }
-  }, [deleteModal.txnId, deleteTransaction, triggerAutoSync]);
+  }, [deleteModal.txnId, deleteTransaction, reloadFunds, triggerAutoSync]);
 
   // Save transaction handler (Create or Update with IndexedDB persistence)
   const handleSaveTransaction = useCallback(
@@ -290,9 +322,11 @@ export function App() {
           ...data,
           updatedAt: new Date().toISOString(),
         });
+        broadcastLocalMutation('transaction', 'update');
       } else {
         // Create new
         await createTransaction(data);
+        broadcastLocalMutation('transaction', 'create');
       }
       await reloadFunds();
       triggerAutoSync();
@@ -372,8 +406,27 @@ export function App() {
         await deleteTransaction(t.id);
       }
       await reload();
+      await reloadFunds();
+      broadcastSyncRestored();
+      triggerAutoSync();
     }
-  }, [allTransactions, deleteTransaction, reload]);
+  }, [allTransactions, deleteTransaction, reload, reloadFunds, triggerAutoSync]);
+
+  // Restore database from uploaded JSON backup file
+  const handleRestoreBackup = useCallback(
+    async (file: File) => {
+      const text = await file.text();
+      const { data } = parseAndValidateBackupJson(text);
+      const res = await restoreSnapshotToDatabase(data);
+      await reload();
+      await reloadCategories();
+      await reloadFunds();
+      broadcastSyncRestored();
+      triggerAutoSync();
+      return res;
+    },
+    [reload, reloadCategories, reloadFunds, triggerAutoSync]
+  );
 
   // Global desktop keyboard shortcuts ('C' for Chi, 'T' for Thu)
   useEffect(() => {
@@ -518,6 +571,7 @@ export function App() {
                 onManageCategories={() => setIsCategoryManageOpen(true)}
                 onSeedSampleData={allTransactions.length === 0 ? handleSeedSampleData : undefined}
                 onResetData={allTransactions.length > 0 ? handleResetData : undefined}
+                onRestoreBackup={handleRestoreBackup}
               />
             )}
           </>

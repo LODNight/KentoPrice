@@ -216,91 +216,109 @@ function handlePushSnapshot(ss, data, meta) {
     });
   }
 
-  // Đảm bảo các sheet đã được khởi tạo
-  handleInitSheets(ss);
+  // Khóa Script an toàn (LockService) để chống ghi đè đồng thời giữa nhiều thiết bị
+  var lock = LockService.getScriptLock();
+  var hasLock = false;
+  try {
+    hasLock = lock.tryLock(30000); // Chờ tối đa 30 giây
+    if (!hasLock) {
+      return createJsonResponse({
+        ok: false,
+        code: 'ERR_CONCURRENT_LOCK_TIMEOUT',
+        message: 'Hệ thống đang bận xử lý đồng bộ từ một phiên khác. Vui lòng thử lại sau giây lát.',
+      }, 429);
+    }
 
-  var txns = data.transactions || [];
-  var cats = data.categories || [];
-  var funds = data.funds || [];
-  var configs = data.fundMonthlyConfigs || [];
+    // Đảm bảo các sheet đã được khởi tạo
+    handleInitSheets(ss);
 
-  // 1. Ghi Sheet Transactions
-  writeTableData(ss, 'Transactions', SHEET_SCHEMAS.Transactions, txns.map(function(t) {
-    return [
-      t.id || '',
-      t.type || 'expense',
-      typeof t.amount === 'number' ? t.amount : Number(t.amount) || 0,
-      t.categoryId || '',
-      t.transactionDate || '',
-      t.note || '',
-      t.fundId || '',
-      t.createdAt || '',
-      t.updatedAt || ''
-    ];
-  }));
+    var txns = data.transactions || [];
+    var cats = data.categories || [];
+    var funds = data.funds || [];
+    var configs = data.fundMonthlyConfigs || [];
 
-  // 2. Ghi Sheet Categories
-  writeTableData(ss, 'Categories', SHEET_SCHEMAS.Categories, cats.map(function(c) {
-    return [
-      c.id || '',
-      c.name || '',
-      c.type || 'expense',
-      c.icon || '',
-      c.color || '',
-      Boolean(c.isDefault),
-      Boolean(c.isArchived),
-      typeof c.order === 'number' ? c.order : Number(c.order) || 0,
-      c.createdAt || ''
-    ];
-  }));
+    // 1. Ghi Sheet Transactions
+    writeTableData(ss, 'Transactions', SHEET_SCHEMAS.Transactions, txns.map(function(t) {
+      return [
+        t.id || '',
+        t.type || 'expense',
+        typeof t.amount === 'number' ? t.amount : Number(t.amount) || 0,
+        t.categoryId || '',
+        normalizeDateCell(t.transactionDate),
+        t.note || '',
+        t.fundId || '',
+        t.createdAt || '',
+        t.updatedAt || ''
+      ];
+    }));
 
-  // 3. Ghi Sheet Funds
-  writeTableData(ss, 'Funds', SHEET_SCHEMAS.Funds, funds.map(function(f) {
-    return [
-      f.id || '',
-      f.name || '',
-      f.icon || '',
-      f.color || '',
-      Boolean(f.isArchived),
-      typeof f.order === 'number' ? f.order : Number(f.order) || 0,
-      typeof f.defaultBudget === 'number' ? f.defaultBudget : Number(f.defaultBudget) || 0,
-      f.defaultMode || 'rollover',
-      f.createdAt || '',
-      f.updatedAt || ''
-    ];
-  }));
+    // 2. Ghi Sheet Categories
+    writeTableData(ss, 'Categories', SHEET_SCHEMAS.Categories, cats.map(function(c) {
+      return [
+        c.id || '',
+        c.name || '',
+        c.type || 'expense',
+        c.icon || '',
+        c.color || '',
+        Boolean(c.isDefault),
+        Boolean(c.isArchived),
+        typeof c.order === 'number' ? c.order : Number(c.order) || 0,
+        c.createdAt || ''
+      ];
+    }));
 
-  // 4. Ghi Sheet FundMonthlyConfigs
-  writeTableData(ss, 'FundMonthlyConfigs', SHEET_SCHEMAS.FundMonthlyConfigs, configs.map(function(cfg) {
-    return [
-      cfg.id || '',
-      cfg.fundId || '',
-      cfg.yearMonth || '',
-      typeof cfg.monthlyBudget === 'number' ? cfg.monthlyBudget : Number(cfg.monthlyBudget) || 0,
-      cfg.budgetMode || 'rollover',
-      cfg.updatedAt || ''
-    ];
-  }));
+    // 3. Ghi Sheet Funds
+    writeTableData(ss, 'Funds', SHEET_SCHEMAS.Funds, funds.map(function(f) {
+      return [
+        f.id || '',
+        f.name || '',
+        f.icon || '',
+        f.color || '',
+        Boolean(f.isArchived),
+        typeof f.order === 'number' ? f.order : Number(f.order) || 0,
+        typeof f.defaultBudget === 'number' ? f.defaultBudget : Number(f.defaultBudget) || 0,
+        f.defaultMode || 'rollover',
+        f.createdAt || '',
+        f.updatedAt || ''
+      ];
+    }));
 
-  // 5. Cập nhật Metadata đồng bộ
-  var syncedAt = new Date().toISOString();
-  setMetaKey(ss, 'last_snapshot_at', syncedAt);
-  if (meta && meta.device) {
-    setMetaKey(ss, 'last_synced_device', meta.device);
+    // 4. Ghi Sheet FundMonthlyConfigs
+    writeTableData(ss, 'FundMonthlyConfigs', SHEET_SCHEMAS.FundMonthlyConfigs, configs.map(function(cfg) {
+      return [
+        cfg.id || '',
+        cfg.fundId || '',
+        cfg.yearMonth || '',
+        typeof cfg.monthlyBudget === 'number' ? cfg.monthlyBudget : Number(cfg.monthlyBudget) || 0,
+        cfg.budgetMode || 'rollover',
+        cfg.updatedAt || ''
+      ];
+    }));
+
+    // 5. Cập nhật Metadata đồng bộ
+    var syncedAt = new Date().toISOString();
+    setMetaKey(ss, 'last_snapshot_at', syncedAt);
+    if (meta && meta.device) {
+      setMetaKey(ss, 'last_synced_device', meta.device);
+    }
+
+    return createJsonResponse({
+      ok: true,
+      action: 'push_snapshot',
+      counts: {
+        transactions: txns.length,
+        categories: cats.length,
+        funds: funds.length,
+        fundMonthlyConfigs: configs.length,
+      },
+      syncedAt: syncedAt,
+      message: 'Đồng bộ snapshot toàn bộ dữ liệu lên Google Sheets thành công.',
+    });
+  } finally {
+    if (hasLock) {
+      lock.releaseLock();
+    }
   }
-
-  return createJsonResponse({
-    ok: true,
-    action: 'push_snapshot',
-    counts: {
-      transactions: txns.length,
-      categories: cats.length,
-      funds: funds.length,
-      fundMonthlyConfigs: configs.length,
-    },
-    syncedAt: syncedAt,
-    message: 'Đồng bộ snapshot toàn bộ dữ liệu lên Google Sheets thành công.',
-  });
 }
 
 /**
@@ -308,57 +326,57 @@ function handlePushSnapshot(ss, data, meta) {
  * Đọc toàn bộ dữ liệu từ 4 Sheet và trả về định dạng chuẩn BackupDataV2
  */
 function handlePullSnapshot(ss) {
-  var txns = readTableData(ss, 'Transactions', function(row) {
+  var txns = readTableData(ss, 'Transactions', function(row, get) {
     return {
-      id: String(row[0] || ''),
-      type: row[1] === 'income' ? 'income' : 'expense',
-      amount: Number(row[2]) || 0,
-      categoryId: String(row[3] || ''),
-      transactionDate: String(row[4] || ''),
-      note: row[5] ? String(row[5]) : undefined,
-      fundId: row[6] ? String(row[6]) : undefined,
-      createdAt: String(row[7] || ''),
-      updatedAt: String(row[8] || ''),
+      id: String(get('id', 0) || ''),
+      type: get('type', 1) === 'income' ? 'income' : 'expense',
+      amount: Math.round(Number(get('amount', 2)) || 0),
+      categoryId: String(get('categoryId', 3) || ''),
+      transactionDate: normalizeDateCell(get('transactionDate', 4)),
+      note: get('note', 5) ? String(get('note', 5)) : undefined,
+      fundId: get('fundId', 6) ? String(get('fundId', 6)) : undefined,
+      createdAt: normalizeIsoString(get('createdAt', 7)),
+      updatedAt: normalizeIsoString(get('updatedAt', 8)),
     };
   });
 
-  var cats = readTableData(ss, 'Categories', function(row) {
+  var cats = readTableData(ss, 'Categories', function(row, get) {
     return {
-      id: String(row[0] || ''),
-      name: String(row[1] || ''),
-      type: row[2] === 'income' ? 'income' : 'expense',
-      icon: String(row[3] || 'Tag'),
-      color: String(row[4] || '#64748B'),
-      isDefault: parseBool(row[5]),
-      isArchived: parseBool(row[6]),
-      order: Number(row[7]) || 0,
-      createdAt: String(row[8] || ''),
+      id: String(get('id', 0) || ''),
+      name: String(get('name', 1) || ''),
+      type: get('type', 2) === 'income' ? 'income' : 'expense',
+      icon: String(get('icon', 3) || 'Tag'),
+      color: String(get('color', 4) || '#64748B'),
+      isDefault: parseBool(get('isDefault', 5)),
+      isArchived: parseBool(get('isArchived', 6)),
+      order: Number(get('order', 7)) || 0,
+      createdAt: normalizeIsoString(get('createdAt', 8)),
     };
   });
 
-  var funds = readTableData(ss, 'Funds', function(row) {
+  var funds = readTableData(ss, 'Funds', function(row, get) {
     return {
-      id: String(row[0] || ''),
-      name: String(row[1] || ''),
-      icon: String(row[2] || 'Wallet'),
-      color: String(row[3] || '#3B82F6'),
-      isArchived: parseBool(row[4]),
-      order: Number(row[5]) || 0,
-      defaultBudget: Number(row[6]) || 0,
-      defaultMode: row[7] === 'reset' ? 'reset' : 'rollover',
-      createdAt: String(row[8] || ''),
-      updatedAt: String(row[9] || ''),
+      id: String(get('id', 0) || ''),
+      name: String(get('name', 1) || ''),
+      icon: String(get('icon', 2) || 'Wallet'),
+      color: String(get('color', 3) || '#3B82F6'),
+      isArchived: parseBool(get('isArchived', 4)),
+      order: Number(get('order', 5)) || 0,
+      defaultBudget: Math.round(Number(get('defaultBudget', 6)) || 0),
+      defaultMode: get('defaultMode', 7) === 'reset' ? 'reset' : 'rollover',
+      createdAt: normalizeIsoString(get('createdAt', 8)),
+      updatedAt: normalizeIsoString(get('updatedAt', 9)),
     };
   });
 
-  var configs = readTableData(ss, 'FundMonthlyConfigs', function(row) {
+  var configs = readTableData(ss, 'FundMonthlyConfigs', function(row, get) {
     return {
-      id: String(row[0] || ''),
-      fundId: String(row[1] || ''),
-      yearMonth: String(row[2] || ''),
-      monthlyBudget: Number(row[3]) || 0,
-      budgetMode: row[4] === 'reset' ? 'reset' : 'rollover',
-      updatedAt: String(row[5] || ''),
+      id: String(get('id', 0) || ''),
+      fundId: String(get('fundId', 1) || ''),
+      yearMonth: normalizeYearMonthCell(get('yearMonth', 2)),
+      monthlyBudget: Math.round(Number(get('monthlyBudget', 3)) || 0),
+      budgetMode: get('budgetMode', 4) === 'reset' ? 'reset' : 'rollover',
+      updatedAt: normalizeIsoString(get('updatedAt', 5)),
     };
   });
 
@@ -440,8 +458,17 @@ function writeTableData(ss, sheetName, headers, rows) {
     sheet.getRange(2, 1, lastRow - 1, maxCols).clearContent();
   }
 
-  // Nếu có dữ liệu mới -> Ghi theo lô (Batch)
+  // Nếu có dữ liệu mới -> Đảm bảo sheet có đủ số dòng trước khi ghi
   if (rows && rows.length > 0) {
+    var requiredRows = rows.length + 1; // +1 cho hàng Header
+    var currentMaxRows = sheet.getMaxRows();
+    if (currentMaxRows < requiredRows) {
+      sheet.insertRowsAfter(currentMaxRows, requiredRows - currentMaxRows);
+    }
+    // Đảm bảo cột transactionDate luôn ở dạng văn bản thuần '@'
+    if (sheetName === 'Transactions') {
+      sheet.getRange(2, 5, rows.length, 1).setNumberFormat('@');
+    }
     sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
   }
 }
@@ -454,14 +481,30 @@ function readTableData(ss, sheetName, mapperFn) {
   var lastCol = sheet.getLastColumn();
   if (lastRow <= 1 || lastCol === 0) return [];
 
+  // Đọc hàng tiêu đề (Header row 1) để ánh xạ tên cột động
+  // Ngăn ngừa lỗi dữ liệu khi người dùng đổi thứ tự hoặc di chuyển cột trên Google Sheets
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var headerMap = {};
+  for (var c = 0; c < headers.length; c++) {
+    if (headers[c]) {
+      headerMap[String(headers[c]).trim()] = c;
+    }
+  }
+
   var values = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
   var results = [];
 
   for (var i = 0; i < values.length; i++) {
     var row = values[i];
+    var get = function(colName, fallbackIdx) {
+      var idx = (headerMap[colName] !== undefined) ? headerMap[colName] : fallbackIdx;
+      return (idx !== undefined && idx < row.length) ? row[idx] : undefined;
+    };
+
+    var idVal = get('id', 0);
     // Bỏ qua dòng trống không có id
-    if (row[0] && String(row[0]).trim() !== '') {
-      results.push(mapperFn(row));
+    if (idVal && String(idVal).trim() !== '') {
+      results.push(mapperFn(row, get));
     }
   }
 
@@ -523,6 +566,98 @@ function parseBool(val) {
   }
   if (typeof val === 'number') return val === 1;
   return false;
+}
+
+var MONTH_NAME_MAP = {
+  jan: '01', feb: '02', mar: '03', apr: '04',
+  may: '05', jun: '06', jul: '07', aug: '08',
+  sep: '09', oct: '10', nov: '11', dec: '12'
+};
+
+function normalizeDateCell(val) {
+  if (!val) return '';
+  if (val instanceof Date) {
+    if (isNaN(val.getTime())) return '';
+    var y = val.getFullYear();
+    var m = String(val.getMonth() + 1);
+    if (m.length < 2) m = '0' + m;
+    var d = String(val.getDate());
+    if (d.length < 2) d = '0' + d;
+    return y + '-' + m + '-' + d;
+  }
+  var s = String(val).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    return s;
+  }
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    return s.substring(0, 10);
+  }
+  // Xử lý chuỗi ngày định dạng tiếng Anh như "Wed Oct 14 2026 00:00:00 GMT+0700 (Indochina Time)"
+  var monthMatch = s.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})\s+(\d{4})/i);
+  if (monthMatch) {
+    var month = MONTH_NAME_MAP[monthMatch[1].toLowerCase()];
+    var day = monthMatch[2].length < 2 ? '0' + monthMatch[2] : monthMatch[2];
+    var year = monthMatch[3];
+    return year + '-' + month + '-' + day;
+  }
+  // Xử lý DD/MM/YYYY hoặc DD-MM-YYYY
+  var dmyMatch = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (dmyMatch) {
+    var day = dmyMatch[1].length < 2 ? '0' + dmyMatch[1] : dmyMatch[1];
+    var month = dmyMatch[2].length < 2 ? '0' + dmyMatch[2] : dmyMatch[2];
+    var year = dmyMatch[3];
+    return year + '-' + month + '-' + day;
+  }
+  // Fallback qua parser chuẩn (bỏ qua phần timezone trong ngoặc)
+  var cleaned = s.replace(/\s*\([^\)]*\)\s*$/, '');
+  var parsed = new Date(cleaned);
+  if (!isNaN(parsed.getTime())) {
+    var y = parsed.getFullYear();
+    var m = String(parsed.getMonth() + 1);
+    if (m.length < 2) m = '0' + m;
+    var d = String(parsed.getDate());
+    if (d.length < 2) d = '0' + d;
+    return y + '-' + m + '-' + d;
+  }
+  return s;
+}
+
+function normalizeYearMonthCell(val) {
+  if (!val) return '';
+  if (val instanceof Date) {
+    var y = val.getFullYear();
+    var m = String(val.getMonth() + 1);
+    if (m.length < 2) m = '0' + m;
+    return y + '-' + m;
+  }
+  var s = String(val).trim();
+  if (/^\d{4}-\d{2}$/.test(s)) {
+    return s;
+  }
+  if (/^\d{4}-\d{2}/.test(s)) {
+    return s.substring(0, 7);
+  }
+  var monthMatch = s.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})?\s*(\d{4})/i);
+  if (monthMatch) {
+    var month = MONTH_NAME_MAP[monthMatch[1].toLowerCase()];
+    var year = monthMatch[3];
+    return year + '-' + month;
+  }
+  var dmyMatch = s.match(/^(\d{1,2})[\/\-](\d{4})/);
+  if (dmyMatch) {
+    var m = dmyMatch[1].length < 2 ? '0' + dmyMatch[1] : dmyMatch[1];
+    var y = dmyMatch[2];
+    return y + '-' + m;
+  }
+  return s;
+}
+
+function normalizeIsoString(val) {
+  if (!val) return '';
+  if (val instanceof Date) {
+    return val.toISOString();
+  }
+  return String(val).trim();
 }
 
 function createJsonResponse(data, statusCode) {
